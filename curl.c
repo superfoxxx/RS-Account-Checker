@@ -9,10 +9,10 @@
 
 #include "common.h"
 
-typedef struct {
+struct memstruct{
 	char *memory;
 	size_t size;
-}memstruct;
+};
 
 /*
 	libcurl in C is much different than in PHP, and doesn't by default output the response.
@@ -22,7 +22,7 @@ typedef struct {
 static size_t StoreCurl(void *contents, size_t size, size_t nmemb, void *userp) {
 
 	size_t realsize = size * nmemb;
-	memstruct *mem = (memstruct *)userp;
+	struct memstruct *mem = (struct memstruct *)userp;
 
 	mem->memory = realloc(mem->memory, mem->size + realsize + 1);
 	if(mem->memory == NULL) {
@@ -30,6 +30,7 @@ static size_t StoreCurl(void *contents, size_t size, size_t nmemb, void *userp) 
 		printf("not enough memory (realloc returned NULL)\n");
 		return 0;
 	}
+
 
 	memcpy(&(mem->memory[mem->size]), contents, realsize);
 	mem->size += realsize;
@@ -50,7 +51,7 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 
 	CURL *curl = curl_easy_init();
 
-	memstruct CurlStruct;
+	struct memstruct CurlStruct;
 
 	CurlStruct.memory = malloc(1);
 	*CurlStruct.memory = 0;
@@ -75,7 +76,7 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 
 	curl_easy_setopt(curl, CURLOPT_URL, "https://secure.runescape.com/m=weblogin/login.ws"); //This may change in the future.
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.0"); //Possibly change this in the future. They block useragents when they're old(Probably my fault)
-	curl_easy_setopt(curl, CURLOPT_REFERER, "https://secure.runescape.com/m=weblogin/loginform.ws?mod=www&ssl=0&dest=community"); //Likewise, may be needed to change.
+	curl_easy_setopt(curl, CURLOPT_REFERER, "https://secure.runescape.com/m=weblogin/loginform.ws?mod=www&ssl=1&reauth=1&dest=account_settings.ws"); //Likewise, may be needed to change.
 	curl_easy_setopt(curl, CURLOPT_AUTOREFERER, 1); //When followlocation takes place.
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1);
@@ -92,9 +93,9 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StoreCurl);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&CurlStruct);
-
+	printf("Before\n");
 	CURLcode res = curl_easy_perform(curl);
-
+	printf("After\n");
 	if(res != CURLE_OK)
 		fdo_log(GENLOG, "cURL Error: %s, Account: %s:%s, Proxy: %s (Size: %zu)", curl_easy_strerror(res), username, password, proxy, CurlStruct.size);
 	else {

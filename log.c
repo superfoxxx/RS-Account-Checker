@@ -22,7 +22,7 @@ pthread_mutex_t filekey;
 
 
 
-void log_init(void) {
+void log_locks(void) {
 	pthread_mutex_init(&logkey, NULL);
 	pthread_mutex_init(&filekey, NULL);
 }
@@ -55,9 +55,12 @@ void fdo_write(FILE *loc, const char* fmt, ...) {
 }
 
 
+/*
+	Return appropriate color/tag for the logtype.
+*/
 const char* levtag(int logtype) {
 	switch(logtype) {
-	case VALIDLOG: return COL_GREEN;
+	case VALIDLOG: case VALIDLOGMB: return COL_GREEN;
 	case LOCKEDLOG: return COL_YELLOW;
 	case INVALIDLOG: return COL_RED;
 	case GENLOG: return COL_GRAY;
@@ -68,23 +71,26 @@ const char* levtag(int logtype) {
 /*
 	This function is used to output when an account has been tried, and its success/failure, or just for general debug info.
 	char* log is the username:password! Unless log=GENLOG.
-
-	This function is different from saveacct(), which saves accounts into their respective files and outputs to stdout. */
+	stderr ONLY.
+*/
 void logserr(int logtype, const char *log) {
 	const char *fmt;
 
 	switch(logtype) {
 	case VALIDLOG:
-		fmt = "%s[TS:%lu] Login works: %s (thread %lu)%s\n";
+		fmt = "%s[TS:%lu] Login works: %s (rthread %lu)%s\n";
+		break;
+	case VALIDLOGMB:
+		fmt = "%s[TS:%lu] Login works: %s  --  Account is Members (rthread %lu)%s\n";
 		break;
 	case LOCKEDLOG:
-		fmt = "%s[TS:%lu] Login works, however it is locked: %s (thread %lu)%s\n";
+		fmt = "%s[TS:%lu] Login works, however it is locked: %s (rthread %lu)%s\n";
 		break;
 	case INVALIDLOG:
-		fmt = "%s[TS:%lu] Login doesn\'t work: %s (thread %lu)%s\n";
+		fmt = "%s[TS:%lu] Login doesn\'t work: %s (rthread %lu)%s\n";
 		break;
 	case GENLOG:
-		fmt = "%s[TS:%lu] %s (thread %lu)%s\n";
+		fmt = "%s[TS:%lu] %s (rthread %lu)%s\n";
 		break;
 	default:
 		fmt = "\n"; //Clang warning
@@ -105,6 +111,9 @@ void logsout(int logtype, const char *login) {
 	switch(logtype) {
 	case VALIDLOG:
 		fmt = "Works: %s\n";
+		break;
+	case VALIDLOGMB:
+		fmt = "Works: %s  --  Is Members\n";
 		break;
 	case LOCKEDLOG:
 		fmt = "Locked: %s\n";
@@ -131,6 +140,9 @@ void logacctofile(int logtype, const char *login) {
 	switch(logtype) {
 	case VALIDLOG:
 		fdo_write(O.Valid, "%s\n", login);
+		break;
+	case VALIDLOGMB:
+		fdo_write(O.ValidMb, "%s\n", login);
 		break;
 	case LOCKEDLOG:
 		fdo_write(O.Locked, "%s\n", login);
@@ -175,16 +187,3 @@ void fdo_log(int logtype, const char *fmt, ...) {
 	free(log);
 
 }
-
-
-
-/*int main() {
-	log_init();
-	char *valid = malloc(strlen(O.basename) +1 + strlen("_valid"));
-	sprintf(valid, "%s%s", O.basename, "_valid");
-	O.Valid = fopen(valid, "a");
-	fdo_log(3, "%s%d", "ayylmao", 5);
-	fclose(O.Valid);
-	free(valid);
-}*/
-
