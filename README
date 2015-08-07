@@ -8,19 +8,24 @@ It is multithreaded, and uses pthreads to handle mutexes.
 Currently, it is Linux/GNU specific, and likely only supports bash(due to the colored output.)
 It currently only supports GnuTLS, and NOT OpenSSL.
 
+
 Output is by default to stderr, and is colored depending on the context.
-Using the "-s" flag makes the accounts output simple text, and outputs to stdout.
-Accounts can also be outputted into files, with a 'basename' provided by the '-o' flag. The files basename_invalid.txt, basename_locked.txt, basename_members_valid.txt, and basename_valid.txt and create and used(if the files already exist, texts are simply appended.) Accounts that do not have valid logins are placed into basename_invalid.txt, basename_locked.txt is used for accounts that have a valid login but are locked. basename_valid.txt contains both F2P logins that work AND members logins that work, while basename_members_valid.txt contains ONLY those are that and that are members.
+Using the "-s" flag makes it so only the accounts are outputted, in plaintext without logging information. In this case, it is sent to stdout.
+
+Accounts can also be outputted into files, with a 'basename' provided by the '-o' flag.
+The files basename_invalid.txt, basename_locked.txt, basename_members_valid.txt, and basename_valid.txt are create and used(if the files already exist, texts are simply appended.)
+Accounts that do not have valid logins are placed into basename_invalid.txt. basename_locked.txt is used for accounts that have a valid login but are locked. basename_valid.txt contains both F2P logins that work AND members logins that work, while basename_members_valid.txt contains ONLY those are that and that are members.
 
 
-Proxies are tried at a minimum of 4 times, which MUST be set using the '-r' flag. Each time a proxy fails, the 'retries' is boosted by one, indicating it has been tried num times. When retries is the same amount as specified in -r, it will declare the proxy as dead.
-If a proxy succeeds and already has a failure rate of more than 0, it will go down by one.
+Proxies are tried at a minimum of 4 times, which can optionally be set using the '-r' flag. Each time a proxy fails, the 'retries' is boosted by one, indicating it has been tried num times. When retries is the same amount as specified in -r, it will declare the proxy as dead.
+If a proxy succeeds and already has a failure rate of more than 0, it will go down by one. When the proxy succeeds, it will set a variable that indicates whether the connection worked on a SOCKS5 connection, or a SOCKS4 connection; future use of the proxy will use the variable to set the connection -- This is one of the reasons why we must try proxies at least 4 times.
 
-Each time a proxy is tried, a different SOCKS option is used: SOCKS4 is used if the amount of failures is even(starting at even, as 0 % 2 is even, and int 0 = bool false), and SOCKS5 is used if the amount of failures is odd. Despite the naming, retries is not how many times it has been retried, but how many times it has been tried(and failed). A better way of thinking of it is a "failurecount".
-This is kept up until a definitive type can be found, and when it can be found, it sets 'type' in the struct to the specific type. From then on in, the type that we have confirmed to work is used.
+The inital connections, before a success, will flip between SOCKS4 and SOCKS5. This is calculated by reading how many tries we have already done on the proxy: "tries modulo 2."
+On the first try, 'tries' will be 0: "0 modulo 2" equals 0. In C, 0 is equivelant to 'false'. Thus, the first attempt is done using SOCKS4: (currentpx->retries % 2) ? CURLPROXY_SOCKS5 : CURLPROXY_SOCKS4. This is kept up until a definitive type can be found.
+Despite the naming, retries is not how many times it has been retried, but how many times it has been failed. A better way of thinking of it is a "failurecount".
 
-If a captcha is hit, the proxy is declared as dead.
-
+After 4(or -r ) attempts, the proxy is declared dead and not used anymore.
+If a captcha is hit, the proxy is also declared as dead.
 
 
 The program does not support HTTP/s proxies.

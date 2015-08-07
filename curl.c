@@ -94,7 +94,6 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 //		fdo_log(DBGLOG, "cURL Error: SocksType: %d, Error: %s, Account: %s:%s, Proxy: %s (Size: %zu)", (stype ? CURLPROXY_SOCKS4 : CURLPROXY_SOCKS5), curl_easy_strerror(res), username, password, proxy, CurlStruct.size);
 		fdo_log(DBGLOG, "cURL Error: %s, Proxy: %s.(type: %d)", curl_easy_strerror(res), proxy, stype);
 	} else {
-
 		strncpy(response, CurlStruct.memory, length);
 		response[length-1] = '\0';
 	}

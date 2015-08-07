@@ -304,7 +304,7 @@ void *do_threaded() {
 	int rstype = currentpx->type;
 	pthread_mutex_unlock(&pthnum);
 
-	CURLcode resp = check(out, 300000, username, password, proxy, ((rstype == 0) ? stype : rstype));
+	CURLcode resp = check(out, 100000, username, password, proxy, ((rstype == 0) ? stype : rstype));
 
 	if(resp != CURLE_OK) {
 		pthread_mutex_lock(&pthnum);
@@ -321,7 +321,7 @@ void *do_threaded() {
 		//check() handles the DBGLOG for the case of resp != CURLE_OK.
 	} else if(strstr(out, "Change Password")) {
 		fdo_log( (strstr(out, "Currently Not a Member") ? VALIDLOG : VALIDLOGMB), "%s:%s (proxy: %s)", username, password, proxy);
-		printf("%zu\n", strlen(out));
+
 		pthread_mutex_lock(&account);
 		current->checked = true;
 		checked_accounts++;
@@ -423,7 +423,7 @@ void usage(const char *p) {
 			"See README for information about the program and its abilities.\n\n\n");
 
 	fprintf(stderr, "Usage: \n"
-			"%s -t <numthreads> -o <outfile_base> -a <accountfile> -p <proxyfile> [-shvr]\n\n", p);
+			"%s -t <numthreads> -a <accountfile> -p <proxyfile> [-o accounts] [-r 8] [-svh]\n\n", p);
 
 	fprintf(stderr, "Example: \n"
 			"%s -t 10 -o outfile -a accounts.txt -p proxies.txt -r 8\n\n\n", p);
@@ -431,18 +431,19 @@ void usage(const char *p) {
 	fprintf(stderr, "Options:\n"
 			"   -t, Required: The number of threads to running concurrently.\n"
 			"       This must not exceed proxies or accounts. Minimum 1.\n"
-			"   -o, Optional: The basename for where we will output results.\n"
-			"       If the file does not exist, it will be created if possible.\n"
-			"       If the outfile includes a directory, the directory MUST exist.\n"
-			"   -s, Optional: Output logs to stdout, with no colors or extra information. -s takes priority over -v, however\n"
-			"       -s may used with -o.\n"
-			"       \033[31;01mIf -s OR -o is not set, the only output is colored output which goes to stderr.\033[0m\n"
 			"   -a, Required: The file with our username:password list in it. Must be readable.\n"
 			"   -p, Required: The file with our proxy:port list in it. Must be readable.\n"
-			"   -h, Optional: This help page.\n"
+			"   -o, Optional: The basename for where we will output results.\n"
+			"       If the file does not exist, it will be created if possible.\n"
+			"	This is independant from other logging options, and if set, will always write to file.\n"
+			"       If the option includes a directory(e.g. -o folder/file), the directory MUST exist.\n"
+			"   -s, Optional: Output logs to stdout, with no colors or extra information.\n"
+			"       \033[31;01mIf -s OR -o is not set, the only output is colored output which goes to stderr.\033[0m\n"
 			"   -v, Optional: Verbose mode; shows debugging information.\n"
-			"   -r, Required: Proxy tries; How many times to try a proxy before it is\n"
-			"       classified as 'dead' - Minimum 4! (this number is effectively half, due to proxytype switching)\n");
+			"       -v may not be used with -s.\n"
+			"   -r, Optional: Proxy tries; How many times to try a proxy before it is\n"
+			"       classified as 'dead' - Minimum value of 4.\n"
+			"   -h, Optional: This help page.\n");
 			
 
 	exit(0);
@@ -666,8 +667,12 @@ int main(int argc, char *argv[]) {
 
 	char *accountfile = NULL;
 	char *proxyfile = NULL;
-
+	O.retries = 4; //Default
+	O.basename = NULL;
+	O.std = false;
+	O.verbose = false;
 	int opt;
+	
 	while((opt = getopt(argc, argv, "t:o:a:p:r:hvs")) != -1) {
 		switch(opt) {
 		case 't':
@@ -692,17 +697,31 @@ int main(int argc, char *argv[]) {
 			O.retries = strtol(optarg, NULL, 10);
 			break;
 		case 'h':
-		case '?':
-		default:
 			usage(argv[0]);
 		}
 	}
 
-	if(O.threads <= 0 || !accountfile || !proxyfile || 3 >= O.retries) {
+	if(O.std && O.verbose) {
 		free(O.basename);
 		free(accountfile);
 		free(proxyfile);
-		usage(argv[0]);
+		fdo_log(GENLOG, "Verbose mode, -v, cannot be used at the same time as stdout mode, -s. Run %s -h for help.", argv[0]);
+		exit(1);
+	}
+	if(O.threads <= 0 || 3 >= O.retries) {
+		free(O.basename);
+		free(accountfile);
+		free(proxyfile);
+		fdo_log(GENLOG, "-r is too low! It should at least be 4. Run %s -h for help.", argv[0]);
+		exit(1);
+	}
+		
+	if(!accountfile || !proxyfile) {
+		free(O.basename);
+		free(accountfile);
+		free(proxyfile);
+		fdo_log(GENLOG, "Proxy or Account file not entered correctly. Run %s -h for help.", argv[0]);
+		exit(1);
 	}
 
 	HandleStartFile(accountfile, proxyfile);
@@ -742,8 +761,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	size_t ithd = 0;
-
 	fdo_log(GENLOG, "Starting with %zu accounts!", total_accounts);
+
 	while(checked_accounts != total_accounts && total_proxies != dead_proxies && keepRunning) {
 		sleep(1);
 		pthread_mutex_lock(&pthnum);
