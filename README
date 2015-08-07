@@ -1,0 +1,30 @@
+(C) 2015-2015 Joshua Rogers <honey@internot.info>
+Contact: @MegaManSec on Twitter.
+See COPYING for information regarding distribution.
+
+This program is a simple "account checker" for RuneScape, which takes proxies in the format of ipaddress:port, and accounts in the form on account:password.
+
+It is multithreaded, and uses pthreads to handle mutexes.
+Currently, it is Linux/GNU specific, and likely only supports bash(due to the colored output.)
+It currently only supports GnuTLS, and NOT OpenSSL.
+
+Output is by default to stderr, and is colored depending on the context.
+Using the "-s" flag makes the accounts output simple text, and outputs to stdout.
+Accounts can also be outputted into files, with a 'basename' provided by the '-o' flag. The files basename_invalid.txt, basename_locked.txt, basename_members_valid.txt, and basename_valid.txt and create and used(if the files already exist, texts are simply appended.) Accounts that do not have valid logins are placed into basename_invalid.txt, basename_locked.txt is used for accounts that have a valid login but are locked. basename_valid.txt contains both F2P logins that work AND members logins that work, while basename_members_valid.txt contains ONLY those are that and that are members.
+
+
+Proxies are tried at a minimum of 4 times, which MUST be set using the '-r' flag. Each time a proxy fails, the 'retries' is boosted by one, indicating it has been tried num times. When retries is the same amount as specified in -r, it will declare the proxy as dead.
+If a proxy succeeds and already has a failure rate of more than 0, it will go down by one.
+
+Each time a proxy is tried, a different SOCKS option is used: SOCKS4 is used if the amount of failures is even(starting at even, as 0 % 2 is even, and int 0 = bool false), and SOCKS5 is used if the amount of failures is odd. Despite the naming, retries is not how many times it has been retried, but how many times it has been tried(and failed). A better way of thinking of it is a "failurecount".
+This is kept up until a definitive type can be found, and when it can be found, it sets 'type' in the struct to the specific type. From then on in, the type that we have confirmed to work is used.
+
+If a captcha is hit, the proxy is declared as dead.
+
+
+
+The program does not support HTTP/s proxies.
+
+Sanity checks are done on input files, such as logins being too long, or passwords being too short.
+
+If you encounter any problems, please report them.

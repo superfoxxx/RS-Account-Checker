@@ -34,6 +34,7 @@ void log_locks(void) {
 void do_write(const char *log, FILE *loc) {
 	pthread_mutex_lock(&logkey);
 	fputs(log, loc);
+	fflush(loc);
 	pthread_mutex_unlock(&logkey);
 }
 
@@ -49,6 +50,7 @@ void fdo_write(FILE *loc, const char* fmt, ...) {
 
 	pthread_mutex_lock(&logkey);
 	vfprintf(loc, fmt, ap);
+	fflush(loc);
 	pthread_mutex_unlock(&logkey);
 
 	va_end(ap);
@@ -63,14 +65,14 @@ const char* levtag(int logtype) {
 	case VALIDLOG: case VALIDLOGMB: return COL_GREEN;
 	case LOCKEDLOG: return COL_YELLOW;
 	case INVALIDLOG: return COL_RED;
-	case GENLOG: return COL_GRAY;
+	case GENLOG: case DBGLOG: return COL_GRAY;
 	}
 	return 0;
 }
 
 /*
 	This function is used to output when an account has been tried, and its success/failure, or just for general debug info.
-	char* log is the username:password! Unless log=GENLOG.
+	char* log is the username:password! Unless log=GENLOG||DBGLOG.
 	stderr ONLY.
 */
 void logserr(int logtype, const char *log) {
@@ -78,26 +80,27 @@ void logserr(int logtype, const char *log) {
 
 	switch(logtype) {
 	case VALIDLOG:
-		fmt = "%s[TS:%lu] Login works: %s (rthread %lu)%s\n";
+		fmt = "%s[TS:%lu] Login works: %s%s\n";
 		break;
 	case VALIDLOGMB:
-		fmt = "%s[TS:%lu] Login works: %s  --  Account is Members (rthread %lu)%s\n";
+		fmt = "%s[TS:%lu] Login works: %s  --  Account is Members%s\n";
 		break;
 	case LOCKEDLOG:
-		fmt = "%s[TS:%lu] Login works, however it is locked: %s (rthread %lu)%s\n";
+		fmt = "%s[TS:%lu] Login works, however it is locked: %s%s\n";
 		break;
 	case INVALIDLOG:
-		fmt = "%s[TS:%lu] Login doesn\'t work: %s (rthread %lu)%s\n";
+		fmt = "%s[TS:%lu] Login doesn\'t work: %s%s\n";
 		break;
+	case DBGLOG:
 	case GENLOG:
-		fmt = "%s[TS:%lu] %s (rthread %lu)%s\n";
+		fmt = "%s[TS:%lu] %s%s\n";
 		break;
 	default:
 		fmt = "\n"; //Clang warning
 		break;
 	}
 
-	fdo_write(stderr, fmt, levtag(logtype), time(NULL), log, pthread_self(), COL_RES);
+	fdo_write(stderr, fmt, levtag(logtype), time(NULL), log, COL_RES);
 }
 
 /*
@@ -121,6 +124,7 @@ void logsout(int logtype, const char *login) {
 	case INVALIDLOG:
 		fmt = "Invalid: %s\n";
 		break;
+	case DBGLOG:
 	case GENLOG:
 		return;
 	default:
@@ -132,7 +136,7 @@ void logsout(int logtype, const char *login) {
 
 }
 /*
-	Write to 'O.basename_xx' file.
+	Write to 'O.basename_xx' files.
 	This relies on using the O. struct, with all the files, which have  ~~~ALREADY BEEN OPENED~~~.
 */
 void logacctofile(int logtype, const char *login) {
@@ -143,6 +147,7 @@ void logacctofile(int logtype, const char *login) {
 		break;
 	case VALIDLOGMB:
 		fdo_write(O.ValidMb, "%s\n", login);
+		fdo_write(O.Valid, "%s\n", login);
 		break;
 	case LOCKEDLOG:
 		fdo_write(O.Locked, "%s\n", login);
@@ -150,6 +155,7 @@ void logacctofile(int logtype, const char *login) {
 	case INVALIDLOG:
 		fdo_write(O.Invalid, "%s\n", login);
 		break;
+	case DBGLOG:
 	case GENLOG:
 		break;
 	}
@@ -163,7 +169,11 @@ void logacctofile(int logtype, const char *login) {
 */
 void do_log(int logtype, const char *log) {
 
-	O.std ? logsout(logtype, log) : logserr(logtype, log);
+	if(O.verbose && logtype == DBGLOG)
+		O.std ? logsout(logtype, log) : logserr(logtype, log);
+
+	if(logtype != DBGLOG)
+		O.std ? logsout(logtype, log) : logserr(logtype, log);
 
 	if(O.basename) logacctofile(logtype, log);
 }

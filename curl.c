@@ -25,12 +25,6 @@ static size_t StoreCurl(void *contents, size_t size, size_t nmemb, void *userp) 
 	struct memstruct *mem = (struct memstruct *)userp;
 
 	mem->memory = realloc(mem->memory, mem->size + realsize + 1);
-	if(mem->memory == NULL) {
-		/* out of memory! */ 
-		printf("not enough memory (realloc returned NULL)\n");
-		return 0;
-	}
-
 
 	memcpy(&(mem->memory[mem->size]), contents, realsize);
 	mem->size += realsize;
@@ -47,7 +41,7 @@ static size_t StoreCurl(void *contents, size_t size, size_t nmemb, void *userp) 
 	proxies type, and filechecks.
 */
 
-CURLcode check(char *response, size_t length, const char *username, const char* password, const char* proxy) {
+CURLcode check(char *response, size_t length, const char *username, const char* password, const char* proxy, int stype) {
 
 	CURL *curl = curl_easy_init();
 
@@ -59,7 +53,7 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 
 	if(!curl) {
 		free(CurlStruct.memory);
-		return -1; //?!?!?!?!
+		return CURLE_FAILED_INIT; //?!?!?!?!
 	}
 
 	//Prepare custom headers.
@@ -86,19 +80,20 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 40L);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
-	curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS4); //Socks5 generally works on socks4 connections.
+	curl_easy_setopt(curl, CURLOPT_PROXYTYPE, stype);
 	curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
 
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StoreCurl);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&CurlStruct);
-	printf("Before\n");
+
 	CURLcode res = curl_easy_perform(curl);
-	printf("After\n");
-	if(res != CURLE_OK)
-		fdo_log(GENLOG, "cURL Error: %s, Account: %s:%s, Proxy: %s (Size: %zu)", curl_easy_strerror(res), username, password, proxy, CurlStruct.size);
-	else {
+
+	if(res != CURLE_OK) {
+//		fdo_log(DBGLOG, "cURL Error: SocksType: %d, Error: %s, Account: %s:%s, Proxy: %s (Size: %zu)", (stype ? CURLPROXY_SOCKS4 : CURLPROXY_SOCKS5), curl_easy_strerror(res), username, password, proxy, CurlStruct.size);
+		fdo_log(DBGLOG, "cURL Error: %s, Proxy: %s.(type: %d)", curl_easy_strerror(res), proxy, stype);
+	} else {
 
 		strncpy(response, CurlStruct.memory, length);
 		response[length-1] = '\0';
