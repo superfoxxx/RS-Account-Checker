@@ -75,7 +75,6 @@ bool isRSUsername(char *str) {
 			return false;
 		else
 			tmp++;
-		
     return true;
 }
 
@@ -204,9 +203,9 @@ size_t setupaccounts(void) {
 		i++;
 	}
 
-	free(pacc);
-	free(ppass);
-	free(puser);
+	free(pacc); pacc = NULL;
+	free(ppass); ppass = NULL;
+	free(puser); puser = NULL;
 
 	return i;
 }
@@ -235,7 +234,7 @@ size_t setupproxies(void) {
 		i++;
 	}
 
-	free(pps);
+	free(pps); pps = NULL;
 
 	return i;
 }
@@ -283,9 +282,9 @@ void *do_threaded() {
 	pthread_mutex_unlock(&pthnum);
 
 	if(!username || !password || !proxy) {
-		free(username);
-		free(password);
-		free(proxy);
+		free(username); username = NULL;
+		free(password); password = NULL;
+		free(proxy); proxy = NULL;
 		pthread_mutex_lock(&pthnum);
 		thread_num--;
 		if(currentpx)
@@ -402,9 +401,9 @@ void *do_threaded() {
 	pthread_mutex_unlock(&account);
 
 
-	free(password);
-	free(username);
-	free(proxy);
+	free(password); password = NULL;
+	free(username); username = NULL;
+	free(proxy); proxy = NULL;
 
 	pthread_exit(NULL);
 	return NULL;
@@ -523,19 +522,19 @@ void HandleStartFile(char *accountfile, char *proxyfile) {
 		O.Invalid = fopen(invalid, "a+");
 		O.Locked = fopen(locked, "a+");
 
-		free(working);
-		free(members);
-		free(invalid);
-		free(locked);
-		free(O.basename);
+		free(working); working = NULL;
+		free(members); members = NULL;
+		free(invalid); invalid = NULL;
+		free(locked); locked = NULL;
+		free(O.basename); O.basename = NULL;
 
 	}
 
 	O.Accounts = fopen(accountfile, "r");
 	O.Proxies = fopen(proxyfile, "r");
 
-	free(accountfile);
-	free(proxyfile);
+	free(accountfile); accountfile = NULL;
+	free(proxyfile); proxyfile = NULL;
 
 }
 
@@ -550,7 +549,7 @@ void freeList(void) {
 	while(head) {
 		tmp = head;
 		head = head->next;
-		free(tmp);
+		free(tmp); tmp = NULL;
 	}
 
 	struct pxnode *tmppx;
@@ -558,7 +557,7 @@ void freeList(void) {
 	while(pxhead) {
 		tmppx = pxhead;
 		pxhead = pxhead->next;
-		free(tmppx);
+		free(tmppx); tmppx = NULL;
 	}
 }
 /*
@@ -569,14 +568,14 @@ void freeListContents(void) {
 	struct accnode *tmp = head;
 
 	while(tmp) {
-		free(tmp->username);
-		free(tmp->password);
+		free(tmp->username); tmp->username = NULL;
+		free(tmp->password); tmp->password = NULL;
 		tmp = tmp->next;
 	}
 
 	struct pxnode *tmppx = pxhead;
 	while(tmppx) {
-		free(tmppx->proxy);
+		free(tmppx->proxy); tmppx->proxy = NULL;
 		tmppx = tmppx->next;
 
 	}
@@ -702,24 +701,24 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(O.std && O.verbose) {
-		free(O.basename);
-		free(accountfile);
-		free(proxyfile);
+		free(O.basename); O.basename = NULL;
+		free(accountfile); accountfile = NULL;
+		free(proxyfile); proxyfile = NULL;
 		fdo_log(GENLOG, "Verbose mode, -v, cannot be used at the same time as stdout mode, -s. Run %s -h for help.", argv[0]);
 		exit(1);
 	}
 	if(O.threads <= 0 || 3 >= O.retries) {
-		free(O.basename);
-		free(accountfile);
-		free(proxyfile);
+		free(O.basename); O.basename = NULL;
+		free(accountfile); accountfile = NULL;
+		free(proxyfile); proxyfile == NULL;
 		fdo_log(GENLOG, "-r is too low! It should at least be 4. Run %s -h for help.", argv[0]);
 		exit(1);
 	}
 		
 	if(!accountfile || !proxyfile) {
-		free(O.basename);
-		free(accountfile);
-		free(proxyfile);
+		free(O.basename); O.basename = NULL;
+		free(accountfile); accountfile = NULL;
+		free(proxyfile); proxyfile = NULL;
 		fdo_log(GENLOG, "Proxy or Account file not entered correctly. Run %s -h for help.", argv[0]);
 		exit(1);
 	}
@@ -764,7 +763,7 @@ int main(int argc, char *argv[]) {
 	fdo_log(GENLOG, "Starting with %zu accounts!", total_accounts);
 
 	while(checked_accounts != total_accounts && total_proxies != dead_proxies && keepRunning) {
-		sleep(1);
+		//sleep(1);
 		pthread_mutex_lock(&pthnum);
 		size_t chk = thread_num;
 		pthread_mutex_unlock(&pthnum);

@@ -194,6 +194,6 @@ void fdo_log(int logtype, const char *fmt, ...) {
 
 	do_log(logtype, log);
 
-	free(log);
+	free(log); log = NULL;
 
 }

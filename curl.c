@@ -52,7 +52,7 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 	CurlStruct.size = 0;
 
 	if(!curl) {
-		free(CurlStruct.memory);
+		free(CurlStruct.memory); CurlStruct.memory = NULL;
 		return CURLE_FAILED_INIT; //?!?!?!?!
 	}
 
@@ -65,8 +65,8 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 	char *post = malloc(plen);
 	snprintf(post, plen, "rem=on&username=%s&password=%s&submit=Log+In&mod=www&ssl=1&dest=account_settings.ws", userenc, passenc);
 
-	curl_free(userenc);
-	curl_free(passenc);
+	curl_free(userenc); userenc = NULL;
+	curl_free(passenc); passenc = NULL;
 
 	curl_easy_setopt(curl, CURLOPT_URL, "https://secure.runescape.com/m=weblogin/login.ws"); //This may change in the future.
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.0"); //Possibly change this in the future. They block useragents when they're old(Probably my fault)
@@ -99,8 +99,8 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 	}
 
 	curl_easy_cleanup(curl);
-	free(CurlStruct.memory);
-	free(post);
+	free(CurlStruct.memory); CurlStruct.memory = NULL;
+	free(post); post = NULL;
 
 	return res;
 }

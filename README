@@ -33,3 +33,9 @@ The program does not support HTTP/s proxies.
 Sanity checks are done on input files, such as logins being too long, or passwords being too short.
 
 If you encounter any problems, please report them.
+
+
+There are certains things that I will not fix, such as:
+* Int overflow in the handling of the -r flag: "O.retries = strtol(optarg, NULL, 10);" -- This is because it will only affect the user, and if they put a negative number, or a too high number, it is their own fault.
+* [TBA]
+
