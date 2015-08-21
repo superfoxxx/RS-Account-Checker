@@ -31,7 +31,7 @@ void log_locks(void) {
 /*
 	Simply write 'log' into 'loc', with locking. Does NOT put a newline afterwards.
 */
-void do_write(const char *log, FILE *loc) {
+static void do_write(const char *log, FILE *loc) {
 	pthread_mutex_lock(&logkey);
 	fputs(log, loc);
 	fflush(loc);
@@ -44,7 +44,7 @@ void do_write(const char *log, FILE *loc) {
 
 	Make sure 'fmt' is a fmt, and not user-input..
 */
-void fdo_write(FILE *loc, const char* fmt, ...) {
+static void fdo_write(FILE *loc, const char* fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 
@@ -60,7 +60,7 @@ void fdo_write(FILE *loc, const char* fmt, ...) {
 /*
 	Return appropriate color/tag for the logtype.
 */
-const char* levtag(int logtype) {
+static const char* levtag(int logtype) {
 	switch(logtype) {
 	case VALIDLOG: case VALIDLOGMB: return COL_GREEN;
 	case LOCKEDLOG: return COL_YELLOW;
@@ -75,7 +75,7 @@ const char* levtag(int logtype) {
 	char* log is the username:password! Unless log=GENLOG||DBGLOG.
 	stderr ONLY.
 */
-void logserr(int logtype, const char *log) {
+static void logserr(int logtype, const char *log) {
 	const char *fmt;
 
 	switch(logtype) {
@@ -107,7 +107,7 @@ void logserr(int logtype, const char *log) {
 	Output logins to stdout, without any debugging information.
 	Format:    Works: account:password, Locked: account:password, Invalid: account:password
 */
-void logsout(int logtype, const char *login) {
+static void logsout(int logtype, const char *login) {
 
 	const char *fmt;
 
@@ -124,29 +124,32 @@ void logsout(int logtype, const char *login) {
 	case INVALIDLOG:
 		fmt = "Invalid: %s\n";
 		break;
-	case DBGLOG:
 	case GENLOG:
+		fmt = "%s[TS:%lu] %s%s\n";
+		break;
+	case DBGLOG:
 		return;
 	default:
 		fmt = "\n"; //Clang warning
 		break;
 	}
 
-	fdo_write(stdout, fmt, login);
+	(logtype == GENLOG) ? fdo_write(stdout, fmt, levtag(logtype), time(NULL), login, COL_RES) : fdo_write(stdout, fmt, login);
+
 
 }
 /*
 	Write to 'O.basename_xx' files.
 	This relies on using the O. struct, with all the files, which have  ~~~ALREADY BEEN OPENED~~~.
 */
-void logacctofile(int logtype, const char *login) {
+static void logacctofile(int logtype, const char *login) {
 
 	switch(logtype) {
 	case VALIDLOG:
 		fdo_write(O.Valid, "%s\n", login);
 		break;
 	case VALIDLOGMB:
-		fdo_write(O.ValidMb, "%s\n", login);
+		fdo_write(O.ValidMb, "%s --  Account is Members\n", login);
 		fdo_write(O.Valid, "%s\n", login);
 		break;
 	case LOCKEDLOG:
@@ -163,17 +166,22 @@ void logacctofile(int logtype, const char *login) {
 }
 
 /*
-	Do logging. Always use this funtion.
+	Do logging. Always use these funtions.
 	Inner functions will determine where things need to go.
 
 */
 void do_log(int logtype, const char *log) {
 
-	if(O.verbose && logtype == DBGLOG)
-		O.std ? logsout(logtype, log) : logserr(logtype, log);
 
-	if(logtype != DBGLOG)
-		O.std ? logsout(logtype, log) : logserr(logtype, log);
+	if(O.verbose && !O.std && logtype == DBGLOG)
+		logserr(logtype, log);
+
+	if(logtype != DBGLOG) {
+		if(O.validonly && (logtype == VALIDLOGMB || logtype == VALIDLOG || logtype == LOCKEDLOG || logtype == GENLOG))
+			O.std ? logsout(logtype, log) : logserr(logtype, log);
+		else if(!O.validonly)
+			O.std ? logsout(logtype, log) : logserr(logtype, log);	
+	}
 
 	if(O.basename) logacctofile(logtype, log);
 }

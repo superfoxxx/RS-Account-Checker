@@ -5,16 +5,22 @@ See COPYING for information regarding distribution.
 This program is a simple "account checker" for RuneScape, which takes proxies in the format of ipaddress:port, and accounts in the form on account:password.
 
 It is multithreaded, and uses pthreads to handle mutexes.
-Currently, it is Linux/GNU specific, and likely only supports bash(due to the colored output.)
+Currently, it is Linux/GNU specific, and only supports bash(or another emulator that supports color codes)
 It currently only supports GnuTLS, and NOT OpenSSL.
 
 
 Output is by default to stderr, and is colored depending on the context.
-Using the "-s" flag makes it so only the accounts are outputted, in plaintext without logging information. In this case, it is sent to stdout.
+Using the "-s" flag makes it so accounts are outputted in plaintext, without logging information. This is done to stdout.
+If the "-i" flag is used, only valid(plus locked) accounts are outputted to std[out/err].
 
 Accounts can also be outputted into files, with a 'basename' provided by the '-o' flag.
 The files basename_invalid.txt, basename_locked.txt, basename_members_valid.txt, and basename_valid.txt are create and used(if the files already exist, texts are simply appended.)
 Accounts that do not have valid logins are placed into basename_invalid.txt. basename_locked.txt is used for accounts that have a valid login but are locked. basename_valid.txt contains both F2P logins that work AND members logins that work, while basename_members_valid.txt contains ONLY those are that and that are members.
+
+basename_unchecked.txt is also used if we run out of proxies before we finished all the accounts. In this case, the file will be overwritten(if already created.) -- This ONLY happens if we have TRIED ATLEAST one account. If we exit out before we get to the account checking phase, basename_unchecked.txt is left empty. BE CAREFUL not to overwrite any other file with the contents of, basename_unchecked.txt, before verifying it is not empty.
+After writing to basename_unchecked.txt, we will attempt to move that file to our original account file, overwriting it. This is so we can re-run the script with new proxies, without having to copy/move the unchecked file to the account file. If we fail in this move, basename_unchecked.txt will still contain the unchecked accounts, and we will report an error.
+
+It is reccomended to ALWAYS use an output file(-o), since if there are any unchecked accouns, they will not be shown anywhere.
 
 
 Proxies are tried at a minimum of 4 times, which can optionally be set using the '-r' flag. Each time a proxy fails, the 'retries' is boosted by one, indicating it has been tried num times. When retries is the same amount as specified in -r, it will declare the proxy as dead.
@@ -37,5 +43,11 @@ If you encounter any problems, please report them.
 
 There are certains things that I will not fix, such as:
 * Int overflow in the handling of the -r flag: "O.retries = strtol(optarg, NULL, 10);" -- This is because it will only affect the user, and if they put a negative number, or a too high number, it is their own fault.
-* [TBA]
+* snprintf and malloc is not confirmed to return valid memory. This can be exhibited by the warnings that size_t(an unsigned value) is used instead of something that can handle a -1 return value from snprintf. -- If there are memory errors, the program will have more problems to worry about than snprintf messing up.
 
+
+
+
+
+TODO: Pot files for accounts?
+TODO: Get max thread count dynamically and put a restriction on it.

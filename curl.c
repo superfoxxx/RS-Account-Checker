@@ -44,17 +44,15 @@ static size_t StoreCurl(void *contents, size_t size, size_t nmemb, void *userp) 
 CURLcode check(char *response, size_t length, const char *username, const char* password, const char* proxy, int stype) {
 
 	CURL *curl = curl_easy_init();
+	if(!curl) {
+		return CURLE_FAILED_INIT; //?!?!?!?!
+	}
 
 	struct memstruct CurlStruct;
 
 	CurlStruct.memory = malloc(1);
 	*CurlStruct.memory = 0;
 	CurlStruct.size = 0;
-
-	if(!curl) {
-		free(CurlStruct.memory); CurlStruct.memory = NULL;
-		return CURLE_FAILED_INIT; //?!?!?!?!
-	}
 
 	//Prepare custom headers.
 	char *userenc = curl_easy_escape(curl, username, 0);
@@ -75,7 +73,7 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1);
 	curl_easy_setopt(curl, CURLOPT_HEADER, 0);
-//(Allow encoding.. for now)	curl_easy_setopt(curl, CURLOPT_ENCODING, "identity");
+	curl_easy_setopt(curl, CURLOPT_ENCODING, "identity");
 	curl_easy_setopt(curl, CURLOPT_POST, 1);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);

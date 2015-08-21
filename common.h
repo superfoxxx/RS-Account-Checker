@@ -12,6 +12,7 @@ struct options {
 	bool std; // If true, output logins to stdout, and don't display stderr information.
 	char* basename; // If not null, logging to file is enabled. This acts as a basename for files.
 	bool verbose; //Verbose logging
+	bool validonly; //Only show valid accounts in stderr output
 	int retries; //How many times to TRY(retry+1) a proxy
 	FILE *Valid; // FILE for writing to working login file. If 'basename' != NULL, then open this upon start. This is ALL valid accounts(both members and nonmembers)
 	FILE *ValidMb; // Likewise, but for valid accounts with memberships.
