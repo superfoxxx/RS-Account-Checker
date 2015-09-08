@@ -60,11 +60,20 @@ volatile int keepRunning = 1; //Signal handler int
 */
 inline char *strdup(const char *str) {
 
-	size_t n = snprintf(NULL, 0, "%s", str);
+	int n = snprintf(NULL, 0, "%s", str);
 	n++;
 	char *dup = malloc(n);
-	if(dup)
-		snprintf(dup, n, "%s", str);
+	if(!dup) {
+		fdo_log(GENLOG, "malloc error in strdup(%s).", strerror(errno));
+		return NULL;
+	}
+
+	int sr = snprintf(dup, n, "%s", str);
+	if(sr < 0) {
+		fdo_log(GENLOG, "snprintf error in strdup(%s).", strerror(errno));
+		dup = NULL;
+	}
+
 	return dup;
 }
 
@@ -212,16 +221,16 @@ static void push_proxy(char* proxy) {
 static size_t setupaccounts(void) {
 	size_t i = 0;
 
-	char *accountsetup = malloc(256);
-	char *password = malloc(256);
-	char *username = malloc(256);
+	char *accountsetup = malloc(128);
+	char *password = malloc(64);
+	char *username = malloc(64);
 
 	char *pacc = accountsetup;
 	char *ppass = password;
 	char *puser = username;
 
 	do_log(GENLOG, "Adding accounts into our list.");
-	while(fgets(accountsetup, 256, O.Accounts)) {
+	while(fgets(accountsetup, 128, O.Accounts)) {
 		while(*accountsetup && isspace(*accountsetup)) accountsetup++;
 		if(!*accountsetup) continue;
 
@@ -239,6 +248,7 @@ static size_t setupaccounts(void) {
 		i++;
 	}
 
+
 	free(pacc); pacc = NULL;
 	free(ppass); ppass = NULL;
 	free(puser); puser = NULL;
@@ -253,12 +263,12 @@ static size_t setupaccounts(void) {
 static size_t setupproxies(void) {
 	size_t i = 0;
 
-	char *proxysetup = malloc(256);
+	char *proxysetup = malloc(64);
 
 	char *pps = proxysetup;
 
 	do_log(GENLOG, "Adding proxies into our list.");
-	while(fgets(proxysetup, 256, O.Proxies)) {
+	while(fgets(proxysetup, 64, O.Proxies)) {
 		while(*proxysetup && isspace(*proxysetup)) proxysetup++;
 		if(!*proxysetup) continue;
 		char *fpx = proxysetup;
@@ -281,15 +291,16 @@ static size_t setupproxies(void) {
 
 	free(pps); pps = NULL;
 
-	return i;
-}
+	return i;}
 
 /*
 	This is the main account checking function.
 	It is multithreaded, and doesn't take any arguments.
 */
 static void *do_threaded() {
-	char out[100000]; //Max response we will handle.
+
+	char outs[100000]; //Max response we will handle.
+	char *out = outs;
 
 	struct accnode *current = head;
 
@@ -307,6 +318,7 @@ static void *do_threaded() {
 
 		username = strdup(current->username);
 		password = strdup(current->password);
+
 		current->inprogress = true;
 		break;
 	}
@@ -327,6 +339,8 @@ static void *do_threaded() {
 	pthread_mutex_unlock(&pthnum);
 
 	if(!username || !password || !proxy) {
+		fdo_log(DBGLOG, "Killing thread as no proxy/password/username to use.");
+
 		free(username); username = NULL;
 		free(password); password = NULL;
 		free(proxy); proxy = NULL;
@@ -339,7 +353,7 @@ static void *do_threaded() {
 		if(current)
 			current->inprogress = false;
 		pthread_mutex_unlock(&account);
-		return NULL;
+		pthread_exit(NULL);
 	}
 
 	pthread_mutex_lock(&pthnum);
@@ -348,6 +362,22 @@ static void *do_threaded() {
 	pthread_mutex_unlock(&pthnum);
 
 	CURLcode resp = check(out, 100000, username, password, proxy, ((rstype == 0) ? stype : rstype));
+
+	if(out == NULL) {
+		free(username); username = NULL;
+		free(password); password = NULL;
+		free(proxy); proxy = NULL;
+		pthread_mutex_lock(&pthnum);
+		thread_num--;
+		if(currentpx)
+			currentpx->inprogress = false;
+		pthread_mutex_unlock(&pthnum);
+		if(current)
+			current->inprogress = false;
+		pthread_mutex_unlock(&account);
+		pthread_exit(NULL);
+	}
+
 
 	if(resp != CURLE_OK) {
 		pthread_mutex_lock(&pthnum);
@@ -481,8 +511,7 @@ static void *do_threaded() {
 	free(username); username = NULL;
 	free(proxy); proxy = NULL;
 
-	return NULL;
-
+	pthread_exit(NULL);
 }
 
 /*
@@ -662,8 +691,8 @@ static void freeListContents(void) {
 */
 static void StartHead(void) {
 	curl_global_init(CURL_GLOBAL_ALL);
-	log_locks();
 	init_locks();
+	log_locks();
 
 	pthread_mutex_init(&account, NULL);
 	pthread_mutex_init(&pthnum, NULL);
@@ -729,7 +758,7 @@ static bool proxytouse(void) {
 	struct pxnode *tmp = pxhead;
 
 	while(tmp) {
-		if(tmp->inprogress == false && tmp->dead == false && tmp->retries != O.retries)
+		if(tmp->inprogress == false && tmp->dead == false)
 			return true;
 
 		tmp = tmp->next;
@@ -758,7 +787,7 @@ static void writeUnchecked(const char *accountfile) {
 
 	FILE *uncheckedfile = fopen(unchecked, "w");
 	if(!uncheckedfile) {
-		fdo_log(GENLOG, "Could not open %s_unchecked.txt file.. Something is wrong!!", O.basename);
+		fdo_log(GENLOG, "Could not open %s_unchecked.txt file.. Something is wrong!! (strerror: %s)", O.basename, strerror(errno));
 		free(unchecked);
 		return;
 	}
@@ -791,6 +820,7 @@ static void writeUnchecked(const char *accountfile) {
 
 /*
 	A little hax to see if a key has been pressed
+	TODO: Fix
 */
 static int getch(void) {
 	struct termios oldattr, newattr;
@@ -821,6 +851,10 @@ int main(int argc, char *argv[]) {
 	O.verbose = false;
 	int opt;
 
+	if(!argv[1])
+		usage(argv[0]);
+
+
 	while((opt = getopt(argc, argv, "t:o:a:p:r:ihvs")) != -1) {
 		switch(opt) {
 		case 't':
@@ -849,6 +883,25 @@ int main(int argc, char *argv[]) {
 			break;
 		case 'h':
 			usage(argv[0]);
+		}
+	}
+
+	if(!O.basename) {
+		printf("You\'re running the account checker without an output file (the -o flag.) Are you sure you want to do that(Y/N)?\n");
+		char answer;
+		scanf("%c", &answer);
+		if(answer == 'Y' || answer == 'y') {
+			printf("Continuing on, as requested..\n");
+		} else if(answer == 'n' || answer == 'N') {
+			printf("Run %s -h for help and information about the -o flag.\n", argv[0]);
+			free(accountfile);
+			free(proxyfile);
+			exit(1);
+		} else {
+			printf("Invalid option. Exiting.\n");
+			free(accountfile);
+			free(proxyfile);
+			exit(1);
 		}
 	}
 
@@ -925,11 +978,9 @@ int main(int argc, char *argv[]) {
 		end(1);
 	}
 
-	size_t ithd = 0;
 	fdo_log(GENLOG, "Starting with %zu accounts, %zu proxies, and %zu threads.", total_accounts, total_proxies, O.threads);
 
 	while(checked_accounts != total_accounts && total_proxies != dead_proxies && keepRunning) {
-		//sleep(1);
 		pthread_mutex_lock(&pthnum);
 		volatile size_t chk = thread_num;
 		pthread_mutex_unlock(&pthnum);
@@ -939,7 +990,7 @@ int main(int argc, char *argv[]) {
 		}
 		printf("%d\n", chk);*/
 
-		if(chk == O.threads || !acctocheck() || !proxytouse())
+		if(chk >= O.threads || !acctocheck() || !proxytouse())
 			continue;
 
 		pthread_mutex_lock(&pthnum);
@@ -947,15 +998,29 @@ int main(int argc, char *argv[]) {
 		pthread_mutex_unlock(&pthnum);
 		//let do_threaded() decide whether or not we can pull an account(processing all already?)
 		pthread_t thread;
+		pthread_attr_t attr;
+
+		int aerr = pthread_attr_init(&attr);
+		if(aerr != 0)
+			printf("pthread_attr_init error(Please report this): %s\n", strerror(aerr));
+		int serr = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+		if(serr != 0)
+			printf("pthread_attr_setdetachstate error(Please report this): %s\n", strerror(serr));
 		int perr = pthread_create(&thread, NULL, &do_threaded, NULL);
 		if(perr != 0)
 			printf("pthread_create error(Please report this): %s\n", strerror(perr));
-		pthread_detach(thread);
-		ithd++;
+		pthread_attr_destroy(&attr);
+	}
+
+	if(!keepRunning) {
+		fdo_log(GENLOG, "Control-C hit. Waiting for all remaining threads to finish.");
+		while(thread_num != 0)
+			printf("%zu threads left.\r", O.threads - (O.threads - thread_num) );
+		printf("\n");
 	}
 
 	if(checked_accounts == total_accounts) {
-		fdo_log(GENLOG, "Deleting account file %s.\n", accountfile);
+		fdo_log(GENLOG, "Deleting account \'file\' %s.", accountfile);
 		unlink(accountfile);
 		do_log(GENLOG, "Finished!");
 	} else
@@ -969,5 +1034,5 @@ int main(int argc, char *argv[]) {
 	free(accountfile); accountfile = NULL;
 	free(O.basename); O.basename = NULL;
 
-	keepRunning ? end(0) : end(SIGINT);
+	keepRunning ? end(0) : end(1);
 }

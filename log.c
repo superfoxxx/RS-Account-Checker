@@ -150,7 +150,7 @@ static void logacctofile(int logtype, const char *login) {
 		break;
 	case VALIDLOGMB:
 		fdo_write(O.ValidMb, "%s --  Account is Members\n", login);
-		fdo_write(O.Valid, "%s\n", login);
+		fdo_write(O.Valid, "%s -- Account is Members\n", login);
 		break;
 	case LOCKEDLOG:
 		fdo_write(O.Locked, "%s\n", login);
@@ -177,10 +177,8 @@ void do_log(int logtype, const char *log) {
 		logserr(logtype, log);
 
 	if(logtype != DBGLOG) {
-		if(O.validonly && (logtype == VALIDLOGMB || logtype == VALIDLOG || logtype == LOCKEDLOG || logtype == GENLOG))
+		if((O.validonly && logtype != INVALIDLOG) || !O.validonly)
 			O.std ? logsout(logtype, log) : logserr(logtype, log);
-		else if(!O.validonly)
-			O.std ? logsout(logtype, log) : logserr(logtype, log);	
 	}
 
 	if(O.basename) logacctofile(logtype, log);

@@ -25,7 +25,10 @@ static size_t StoreCurl(void *contents, size_t size, size_t nmemb, void *userp) 
 	struct memstruct *mem = (struct memstruct *)userp;
 
 	mem->memory = realloc(mem->memory, mem->size + realsize + 1);
-
+	if(mem->memory == NULL) {
+		fdo_log(GENLOG, "Memory error in StoreCurl()(%s).", strerror(errno));
+		return 0;
+	}
 	memcpy(&(mem->memory[mem->size]), contents, realsize);
 	mem->size += realsize;
 	mem->memory[mem->size] = 0;
@@ -45,6 +48,7 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 
 	CURL *curl = curl_easy_init();
 	if(!curl) {
+		fdo_log(GENLOG, "cURL Init Error: (?!)");
 		return CURLE_FAILED_INIT; //?!?!?!?!
 	}
 
@@ -89,11 +93,14 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 	CURLcode res = curl_easy_perform(curl);
 
 	if(res != CURLE_OK) {
-//		fdo_log(DBGLOG, "cURL Error: SocksType: %d, Error: %s, Account: %s:%s, Proxy: %s (Size: %zu)", (stype ? CURLPROXY_SOCKS4 : CURLPROXY_SOCKS5), curl_easy_strerror(res), username, password, proxy, CurlStruct.size);
 		fdo_log(DBGLOG, "cURL Error: %s, Proxy: %s.(type: %d)", curl_easy_strerror(res), proxy, stype);
 	} else {
-		strncpy(response, CurlStruct.memory, length);
-		response[length-1] = '\0';
+		if(CurlStruct.memory != NULL) {
+			strncpy(response, CurlStruct.memory, length);
+			response[length-1] = '\0';
+		} else {
+			response = NULL;
+		}
 	}
 
 	curl_easy_cleanup(curl);
