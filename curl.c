@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include <pthread.h>
-#include <curl/curl.h>
+//#include <curl/curl.h>
 
 #include "common.h"
 
@@ -26,7 +26,7 @@ static size_t StoreCurl(void *contents, size_t size, size_t nmemb, void *userp) 
 
 	mem->memory = realloc(mem->memory, mem->size + realsize + 1);
 	if(mem->memory == NULL) {
-		fdo_log(GENLOG, "Memory error in StoreCurl()(%s).", strerror(errno));
+//		fdo_log(GENLOG, "Memory error in StoreCurl()(%s).", strerror(errno));
 		return 0;
 	}
 	memcpy(&(mem->memory[mem->size]), contents, realsize);
@@ -60,11 +60,25 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 
 	//Prepare custom headers.
 	char *userenc = curl_easy_escape(curl, username, 0);
+	if(!userenc) {
+		free(CurlStruct.memory);
+		return CURLE_FAILED_INIT;
+	}
 	char *passenc = curl_easy_escape(curl, password, 0);
-
+	if(!passenc) {
+		free(CurlStruct.memory);
+		curl_free(passenc); passenc = NULL;
+		return CURLE_FAILED_INIT;
+	}
 	size_t plen = snprintf(NULL, 0, "rem=on&username=%s&password=%s&submit=Log+In&mod=www&ssl=1&dest=account_settings.ws", userenc, passenc);
 	plen += 1;
 	char *post = malloc(plen);
+	if(!post) {
+		free(CurlStruct.memory);
+		curl_free(userenc); userenc = NULL;
+		curl_free(passenc); passenc = NULL;
+		return CURLE_FAILED_INIT;
+	}
 	snprintf(post, plen, "rem=on&username=%s&password=%s&submit=Log+In&mod=www&ssl=1&dest=account_settings.ws", userenc, passenc);
 
 	curl_free(userenc); userenc = NULL;
@@ -82,8 +96,8 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 40L);
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
 	curl_easy_setopt(curl, CURLOPT_PROXYTYPE, stype);
 	curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
 

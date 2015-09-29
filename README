@@ -20,7 +20,7 @@ Accounts that do not have valid logins are placed into basename_invalid.txt. bas
 basename_unchecked.txt is also used if we run out of proxies before we finished all the accounts. In this case, the file will be overwritten(if already created.) -- This ONLY happens if we have TRIED ATLEAST one account. If we exit out before we get to the account checking phase, basename_unchecked.txt is left empty. BE CAREFUL not to overwrite any other file with the contents of, basename_unchecked.txt, before verifying it is not empty.
 After writing to basename_unchecked.txt, we will attempt to move that file to our original account file, overwriting it. This is so we can re-run the script with new proxies, without having to copy/move the unchecked file to the account file. If we fail in this move, basename_unchecked.txt will still contain the unchecked accounts, and we will report an error.
 
-It is reccomended to ALWAYS use an output file(-o), since if there are any unchecked accouns, they will not be shown anywhere.
+It is reccomended to ALWAYS use an output file(-o), since if there are any unchecked accounts, they will not be shown anywhere, and the file will not be replaced with unchecked accounts.
 
 
 Proxies are tried at a minimum of 4 times, which can optionally be set using the '-r' flag. Each time a proxy fails, the 'retries' is boosted by one, indicating it has been tried num times. When retries is the same amount as specified in -r, it will declare the proxy as dead.
@@ -50,4 +50,14 @@ There are certains things that I will not fix, such as:
 
 
 TODO: Pot files for accounts?
-TODO: Get max thread count dynamically and put a restriction on it.
+TODO: Get max thread count dynamically and put a restriction on it?
+
+
+
+Requirements:
+
+libcurl >= 7.44.0
+GNUTLS
+OpenSSL
+pthreads
+gcrypt

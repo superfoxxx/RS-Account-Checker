@@ -1,3 +1,4 @@
+#include <openssl/md5.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -11,8 +12,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
-
-#include <curl/curl.h>
 
 #include "common.h"
 
@@ -62,16 +61,16 @@ inline char *strdup(const char *str) {
 
 	int n = snprintf(NULL, 0, "%s", str);
 	n++;
-	char *dup = malloc(n);
+	char *dup = malloc((size_t)n);
 	if(!dup) {
 		fdo_log(GENLOG, "malloc error in strdup(%s).", strerror(errno));
 		return NULL;
 	}
 
-	int sr = snprintf(dup, n, "%s", str);
-	if(sr < 0) {
+	n = snprintf(dup, (size_t)n, "%s", str);
+	if(n < 0) {
 		fdo_log(GENLOG, "snprintf error in strdup(%s).", strerror(errno));
-		dup = NULL;
+		free(dup); dup = NULL;
 	}
 
 	return dup;
@@ -120,7 +119,7 @@ static void push_acc(char *username, char *password) {
 		fdo_log(GENLOG, "Skipping account %s:%s, as the username is longer than 12 character.", username, password);
 		return;
 	}
-	if(!strstr(username, "@") && (!isRSUsername(username) || strstr(username, "fuck") || strstr(username, "shit") || strstr(username, "Mod ") || strstr(username, "Jagex"))) {
+	if(!strstr(username, "@") && (!isRSUsername(username) || strstr(username, "fuck") || strstr(username, "shit") || strstr(username, "mod ") || strstr(username, "jagex"))) {
 		fdo_log(GENLOG, "Skipping account %s:%s, as the username containers characters that are not accepted by RS.", username, password);
 		return;
 	}
@@ -499,13 +498,13 @@ static void *do_threaded() {
 		dead_proxies++;
 	}
 	currentpx->inprogress = false;
-	thread_num--;
-	pthread_mutex_unlock(&pthnum);
 
 	pthread_mutex_lock(&account);
 	current->inprogress = false;
 	pthread_mutex_unlock(&account);
 
+	thread_num--;
+	pthread_mutex_unlock(&pthnum);
 
 	free(password); password = NULL;
 	free(username); username = NULL;
@@ -540,6 +539,7 @@ static void usage(const char *p) {
 			"       If the file does not exist, it will be created if possible.\n"
 			"       This is independant from other logging options, and if set, will always write to file.\n"
 			"       If the option includes a directory(e.g. -o folder/file), the directory MUST exist.\n"
+			"       \033[31;01mIf this option is not used, the already checked accounts are not removed from our inital account file.\033[0m\n"
 			"   -i, Optional: Only output valid logins(works with both stdout and stderr.)\n"
 			"   -s, Optional: Output logs to stdout, with no colors or extra information.\n"
 			"       \033[31;01mIf -s OR -o is not set, the ONLY output is colored output which goes to stderr.\033[0m\n"
@@ -664,6 +664,7 @@ static void freeList(void) {
 		pxhead = pxhead->next;
 		free(tmppx); tmppx = NULL;
 	}
+
 }
 /*
 	Frees all the CONTENTS of our lists. Does not free 'accnode'/'pxnode'
@@ -692,7 +693,7 @@ static void freeListContents(void) {
 static void StartHead(void) {
 	curl_global_init(CURL_GLOBAL_ALL);
 	init_locks();
-	log_locks();
+	//log_locks();
 
 	pthread_mutex_init(&account, NULL);
 	pthread_mutex_init(&pthnum, NULL);
@@ -731,22 +732,27 @@ static inline void end(int sgnl) {
 	pthread_mutex_destroy(&checks);
 	if(sgnl != 1)
 		fdo_log(GENLOG, "Final report: Of the %zu/%zu logins attempted, %zu were valid, of which %zu were members and %zu accounts were locked, while %zu accounts did not work.\n", checked_accounts, total_accounts, numvalid, nummembers, numlocked, numinvalid);
+
+	dest_log_locks();
 	exit(sgnl);
 }
 
 /*
 	Check whether there is an account to process.
-	Not threadsafe, and doesn't need to be, since it will be rerun anyways.
 */
 static bool acctocheck(void) {
 	struct accnode *tmp = head;
 
+	pthread_mutex_lock(&account);
 	while(tmp) {
-		if(tmp->inprogress == false && tmp->checked == false)
+		if(tmp->inprogress == false && tmp->checked == false) {
+			pthread_mutex_unlock(&account);
 			return true;
+		}
 
 		tmp = tmp->next;
 	}
+	pthread_mutex_unlock(&account);
 	return false;
 }
 
@@ -757,12 +763,16 @@ static bool acctocheck(void) {
 static bool proxytouse(void) {
 	struct pxnode *tmp = pxhead;
 
+	pthread_mutex_lock(&pthnum);
 	while(tmp) {
-		if(tmp->inprogress == false && tmp->dead == false)
+		if(tmp->inprogress == false && tmp->dead == false) {
+			pthread_mutex_unlock(&pthnum);
 			return true;
+		}
 
 		tmp = tmp->next;
 	}
+	pthread_mutex_unlock(&pthnum);
 	return false;
 }
 /*
@@ -836,10 +846,160 @@ static int getch(void) {
 }
 
 
+
+
+
+
+
+/*
+	Submit username and password and hwid to Bugabuse.Net, to confirm that we are who we say we are, 1., somebody with permission to use this program(email:pass), and 2., we are who we say we are(HWID).
+	Do this by submitting a POST with email=&pass=&hwid= to https://www.bugabuse.net/checker.php. If the return code is 200, then we are who we say we are. Otherwise, we fail.
+
+	'email' and 'password' should be original strings, and will be MD5'd in this function. hwid should already be MD5'd, thus we don't need to do it again.
+*/
+
+
+bool getExt(const char* email, const char* password, const char* hwid) {
+
+	unsigned char c[MD5_DIGEST_LENGTH];
+	MD5_CTX mdContext;
+	MD5_Init (&mdContext);
+	MD5_Update (&mdContext, password, strlen(password));
+	MD5_Final (c,&mdContext);
+
+	char *md5password = malloc(33);
+	for(int i = 0; i < MD5_DIGEST_LENGTH; i++) {
+		sprintf(md5password+(2*i), "%02x", c[i]);
+	}
+
+	MD5_Init (&mdContext);
+	MD5_Update (&mdContext, email, strlen(email));
+	MD5_Final (c,&mdContext);
+
+	char *md5email = malloc(33);
+	for(int i = 0; i < MD5_DIGEST_LENGTH; i++) {
+		sprintf(md5email+(2*i), "%02x", c[i]);
+	}
+
+
+
+	CURL *curl;
+	CURLcode res;
+
+	curl_global_init(CURL_GLOBAL_DEFAULT);
+
+	curl = curl_easy_init();
+	if(!curl) {
+		curl_global_cleanup();
+		free(md5email);
+		free(md5password);
+		return false;
+	}
+
+
+	curl_easy_setopt(curl, CURLOPT_URL, "https://www.bugabuse.net/checker.php");
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);
+/*	if(curl_easy_setopt(curl, CURLOPT_PINNEDPUBLICKEY, "sha256//5OrN5gOyHMWJzquaZPGbiOkCaWlccDqPTsleyWU6I30=") == CURLE_UNKNOWN_OPTION) {
+		//PINNEDPUBLICKEY not supported.
+		printf("Cannot pin.\n");
+		curl_easy_cleanup(curl);
+		curl_global_cleanup();
+		free(md5email);
+		free(md5password);
+		return false;
+	}*/
+
+	int n = snprintf(NULL, 0, "email=%s&password=%s&hwid=%s", md5email, md5password, hwid);
+	n++;
+	char *send = malloc((size_t)n);
+	snprintf(send, (size_t)n, "email=%s&password=%s&hwid=%s", md5email, md5password, hwid);
+
+	curl_easy_setopt(curl, CURLOPT_POST, 1L);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, send);
+
+	res = curl_easy_perform(curl);
+	if(res != CURLE_OK) {
+		printf("cURL error in HWID: %s.\n", curl_easy_strerror(res));
+		free(send);
+		curl_easy_cleanup(curl);
+		curl_global_cleanup();
+		free(md5email);
+		free(md5password);
+		return false;
+	}
+
+	long respcode;
+	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &respcode);
+
+	if(respcode == 200) {
+		free(send);
+		curl_easy_cleanup(curl);
+		curl_global_cleanup();
+		free(md5email);
+		free(md5password);
+		return true;
+	} else {
+		printf("Got %lu for HWID\n", respcode);
+	}
+
+	free(send);
+	curl_easy_cleanup(curl);
+	curl_global_cleanup();
+	free(md5email);
+	free(md5password);
+	return false;
+
+
+}
+
+
+
+
+
 int main(int argc, char *argv[]) {
+
+
+	char *hwid = getHWID();
+	if(!hwid) {
+		printf("Could not get HWID. Contact support.\n");
+		exit(2);
+	}
+	char email[100] = {0};
+	printf("Enter your Bugabuse.Net email: ");
+	fgets(email, 100, stdin);
+	if(email[strlen(email) - 1] == '\n')
+		email[strlen(email) -1] = '\0';
+	if(strlen(email) <= 1) {
+		printf("Invalid email.\n");
+		free(hwid);
+		exit(2);
+	}
+
+	char password[100] = {0};
+	printf("Enter your Bugabuse.net password: ");
+	fgets(password, 100, stdin);
+	if(password[strlen(password) - 1] == '\n')
+		password[strlen(password) -1] = '\0';
+	if(strlen(password) <= 1) {
+		printf("Invalid password.\n");
+		free(hwid);
+		exit(2);
+	}
+
+	if(!getExt(email, password, hwid)) {
+		printf("Could not confirm HWID. Contact support.\n");
+		free(hwid);
+		exit(2);
+	}
+
+	free(hwid);
+
 
 	//Initialize options.
 	signal(SIGINT, intHandler);
+
+	log_locks();
 
 	char *accountfile = NULL;
 	char *proxyfile = NULL;
@@ -851,8 +1011,10 @@ int main(int argc, char *argv[]) {
 	O.verbose = false;
 	int opt;
 
-	if(!argv[1])
+	if(!argv[1]) {
+		dest_log_locks();
 		usage(argv[0]);
+	}
 
 
 	while((opt = getopt(argc, argv, "t:o:a:p:r:ihvs")) != -1) {
@@ -882,25 +1044,31 @@ int main(int argc, char *argv[]) {
 			O.retries = strtol(optarg, NULL, 10);
 			break;
 		case 'h':
+			free(O.basename);
+			free(accountfile);
+			free(proxyfile);
+			dest_log_locks();
 			usage(argv[0]);
 		}
 	}
 
 	if(!O.basename) {
-		printf("You\'re running the account checker without an output file (the -o flag.) Are you sure you want to do that(Y/N)?\n");
+		fprintf(stderr, "\033[31;01mYou\'re running the account checker without an output file (the -o flag.) Are you 100%% sure you want to do that(Y/N)?\033[0m\n\n");
 		char answer;
 		scanf("%c", &answer);
 		if(answer == 'Y' || answer == 'y') {
-			printf("Continuing on, as requested..\n");
+			fprintf(stderr, "Continuing on, as requested..\n");
 		} else if(answer == 'n' || answer == 'N') {
-			printf("Run %s -h for help and information about the -o flag.\n", argv[0]);
+			fprintf(stderr, "Run %s -h for help and information about the -o flag.\n", argv[0]);
 			free(accountfile);
 			free(proxyfile);
+			dest_log_locks();
 			exit(1);
 		} else {
-			printf("Invalid option. Exiting.\n");
+			fprintf(stderr, "Invalid option. Exiting.\n");
 			free(accountfile);
 			free(proxyfile);
+			dest_log_locks();
 			exit(1);
 		}
 	}
@@ -910,6 +1078,7 @@ int main(int argc, char *argv[]) {
 		free(accountfile);
 		free(proxyfile);
 		fdo_log(GENLOG, "Verbose mode, -v, cannot be used at the same time as stdout mode, -s, or valid only mode, -i. Run %s -h for help.", argv[0]);
+		dest_log_locks();
 		exit(1);
 	}
 
@@ -918,6 +1087,7 @@ int main(int argc, char *argv[]) {
 		free(accountfile);
 		free(proxyfile);
 		fdo_log(GENLOG, "-r is too low! It should at least be 4. Run %s -h for help.", argv[0]);
+		dest_log_locks();
 		exit(1);
 	}
 
@@ -926,6 +1096,7 @@ int main(int argc, char *argv[]) {
 		free(accountfile);
 		free(proxyfile);
 		fdo_log(GENLOG, "-t is too low! It should at least be 1. Run %s -h for help.", argv[0]);
+		dest_log_locks();
 		exit(1);
 	}
 
@@ -934,6 +1105,7 @@ int main(int argc, char *argv[]) {
 		free(accountfile);
 		free(proxyfile);
 		fdo_log(GENLOG, "Proxy or Account file not entered correctly. Run %s -h for help.", argv[0]);
+		dest_log_locks();
 		exit(1);
 	}
 
@@ -942,6 +1114,7 @@ int main(int argc, char *argv[]) {
 		CloseFiles();
 		free(O.basename);
 		fdo_log(GENLOG, "Could not open all files. See %s -h for help.", argv[0]);
+		dest_log_locks();
 		exit(1);
 	}
 	do_log(GENLOG, "Initalizing our head.");
@@ -980,45 +1153,75 @@ int main(int argc, char *argv[]) {
 
 	fdo_log(GENLOG, "Starting with %zu accounts, %zu proxies, and %zu threads.", total_accounts, total_proxies, O.threads);
 
-	while(checked_accounts != total_accounts && total_proxies != dead_proxies && keepRunning) {
+
+	for(;;) {
+		if(!keepRunning) break;
+
 		pthread_mutex_lock(&pthnum);
-		volatile size_t chk = thread_num;
+		size_t totalp = total_proxies;
+		size_t dproxies = dead_proxies;
+		size_t chk = thread_num;
 		pthread_mutex_unlock(&pthnum);
 
+		if(totalp == dproxies)
+			break;
+
+		if(chk == O.threads)
+			continue;
+
+		if(chk > O.threads)
+			printf("SOMETHING IS WRONG! FIX ALL DA CODEZ\n");
+
+		pthread_mutex_lock(&account);
+		size_t caccounts = checked_accounts;
+		size_t taccounts = total_accounts;
+		pthread_mutex_unlock(&account);
+
+		if(caccounts == taccounts)
+			break;
 /*		if(getch()) {
 			fdo_log(GENLOG, "Progress report: %zu/%zu accounts checked. %zu/%zu proxies used. %zu/%zu threads currently running.", checked_accounts, total_accounts, dead_proxies, total_proxies, chk, O.threads);
 		}
 		printf("%d\n", chk);*/
 
-		if(chk >= O.threads || !acctocheck() || !proxytouse())
+		if(!acctocheck() || !proxytouse())
 			continue;
 
-		pthread_mutex_lock(&pthnum);
-		thread_num++;
-		pthread_mutex_unlock(&pthnum);
 		//let do_threaded() decide whether or not we can pull an account(processing all already?)
 		pthread_t thread;
 		pthread_attr_t attr;
 
 		int aerr = pthread_attr_init(&attr);
 		if(aerr != 0)
-			printf("pthread_attr_init error(Please report this): %s\n", strerror(aerr));
+			fdo_log(GENLOG, "pthread_attr_init error(Please report this): %s\n", strerror(aerr));
 		int serr = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 		if(serr != 0)
-			printf("pthread_attr_setdetachstate error(Please report this): %s\n", strerror(serr));
-		int perr = pthread_create(&thread, NULL, &do_threaded, NULL);
+			fdo_log(GENLOG, "pthread_attr_setdetachstate error(Please report this): %s\n", strerror(serr));
+
+		pthread_mutex_lock(&pthnum);
+		thread_num++;
+		pthread_mutex_unlock(&pthnum);
+
+		int perr = pthread_create(&thread, &attr, &do_threaded, NULL);
+
 		if(perr != 0)
-			printf("pthread_create error(Please report this): %s\n", strerror(perr));
+			fdo_log(GENLOG,"pthread_create error(Please report this): %s\n", strerror(perr));
 		pthread_attr_destroy(&attr);
 	}
 
 	if(!keepRunning) {
 		fdo_log(GENLOG, "Control-C hit. Waiting for all remaining threads to finish.");
-		while(thread_num != 0)
-			printf("%zu threads left.\r", O.threads - (O.threads - thread_num) );
-		printf("\n");
+		for(;;) {
+			pthread_mutex_lock(&pthnum);
+			if(thread_num == 0) {
+				pthread_mutex_unlock(&pthnum);
+				break;
+			}
+			fdo_log(GENLOG, "%zu threads left.", O.threads - (O.threads - thread_num));
+			pthread_mutex_unlock(&pthnum);
+			sleep(2);
+		}
 	}
-
 	if(checked_accounts == total_accounts) {
 		fdo_log(GENLOG, "Deleting account \'file\' %s.", accountfile);
 		unlink(accountfile);
@@ -1034,5 +1237,6 @@ int main(int argc, char *argv[]) {
 	free(accountfile); accountfile = NULL;
 	free(O.basename); O.basename = NULL;
 
-	keepRunning ? end(0) : end(1);
+//	keepRunning ? end(0) : end(1);
+	end(0);
 }

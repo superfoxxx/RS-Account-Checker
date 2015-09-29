@@ -1,0 +1,26 @@
+Usage: 
+./a.out -t <numthreads> -a <accountfile> -p <proxyfile> [-o accounts] [-r 8] [-isvh]
+
+Example(And recommended usage): 
+./a.out -o outfile -a accounts.txt -p proxies.txt -r 8 -t 100
+
+
+Options:
+   -t, Required: The number of threads to running concurrently.
+       This must not exceed proxies or accounts. Minimum 1.
+   -a, Required: The file with our username:password list in it. Must be readable.
+   -p, Required: The file with our proxy:port list in it. Must be readable.
+   -o, Optional: The basename for where we will output results.
+       If the file does not exist, it will be created if possible.
+       This is independant from other logging options, and if set, will always write to file.
+       If the option includes a directory(e.g. -o folder/file), the directory MUST exist.
+       If this option is not used, the already checked accounts are not removed from our inital account file.
+   -i, Optional: Only output valid logins(works with both stdout and stderr.)
+   -s, Optional: Output logs to stdout, with no colors or extra information.
+       If -s OR -o is not set, the ONLY output is colored output which goes to stderr.
+   -v, Optional: Verbose mode; shows debugging information.
+       -v may not be used with -s or -i.
+   -r, Optional: Proxy tries; How many times to try a proxy before it is
+       classified as 'dead' - Minim
+   -h, Optional: This help page.
+

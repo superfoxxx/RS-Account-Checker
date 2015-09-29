@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
 
 #include <unistd.h>
 #include <pthread.h>
@@ -27,6 +28,10 @@ void log_locks(void) {
 	pthread_mutex_init(&filekey, NULL);
 }
 
+void dest_log_locks(void) {
+	pthread_mutex_destroy(&logkey);
+	pthread_mutex_destroy(&filekey);
+}
 
 /*
 	Simply write 'log' into 'loc', with locking. Does NOT put a newline afterwards.
@@ -62,10 +67,10 @@ static void fdo_write(FILE *loc, const char* fmt, ...) {
 */
 static const char* levtag(int logtype) {
 	switch(logtype) {
-	case VALIDLOG: case VALIDLOGMB: return COL_GREEN;
-	case LOCKEDLOG: return COL_YELLOW;
-	case INVALIDLOG: return COL_RED;
-	case GENLOG: case DBGLOG: return COL_GRAY;
+		case VALIDLOG: case VALIDLOGMB: return COL_GREEN;
+		case LOCKEDLOG: return COL_YELLOW;
+		case INVALIDLOG: return COL_RED;
+		case GENLOG: case DBGLOG: return COL_GRAY;
 	}
 	return 0;
 }
@@ -189,16 +194,25 @@ void fdo_log(int logtype, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 
-	size_t len = vsnprintf(NULL, 0, fmt, ap);
+	int len = vsnprintf(NULL, 0, fmt, ap);
 	va_end(ap);
 	len += 1;
-	char *log = malloc(len);
+	char *log = malloc((size_t)len);
+	if(log == NULL) {
+		fprintf(stderr, "\nError in malloc - fdo_log()(%s).", strerror(errno));
+		return;
+	}
 
 	va_start(ap, fmt);
-	vsnprintf(log, len, fmt, ap);
-	va_end(ap);
+	len = vsnprintf(log, (size_t)len, fmt, ap);
 
-	do_log(logtype, log);
+	if(len >  0) {
+		do_log(logtype, log);
+	} else {
+		fprintf(stderr, "\nError in vsnprintf - fdo_log()(%s).", strerror(errno));
+	}
+
+	va_end(ap);
 
 	free(log); log = NULL;
 

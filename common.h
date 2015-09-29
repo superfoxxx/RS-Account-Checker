@@ -1,4 +1,5 @@
 #include <curl/curl.h>
+//#include "libcurl.h"
 
 #define VALIDLOG 0
 #define VALIDLOGMB 1
@@ -26,9 +27,12 @@ struct options {
 struct options O;
 
 
+char *getHWID(void);
+
 CURLcode check(char *response, size_t length, const char *username, const char* password, const char* proxy, int stype);
 
 void log_locks(void); //Call when beginning program
+void dest_log_locks(void);
 
 void do_log(int logtype, const char *log); //Call when actually doing log-stuff.
 void fdo_log(int logtype, const char *fmt, ...); //Likewise, but formatted.

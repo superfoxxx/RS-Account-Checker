@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <pthread.h>
-#include <curl/curl.h>
+//#include <curl/curl.h>
+//#include "libcurl.h"
 
 #include <gcrypt.h>
 #include <errno.h>
