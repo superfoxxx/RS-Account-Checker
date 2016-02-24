@@ -545,7 +545,7 @@ static void *do_threaded() {
 */
 static void usage(const char *p) {
 
-	fprintf(stderr, "(C) 2015-2015 Joshua Rogers <honey@internot.info>\n"
+	fprintf(stderr, "(C) 2015-2016 Joshua Rogers <honey@internot.info><https://github.com/MegaManSec/RS-Account-Checker>\n"
 			"Contact: @MegaManSec on Twitter.\n"
 			"See COPYING for information regarding distribution.\n"
 			"See README for information about the program and its abilities.\n\n\n");

@@ -1,6 +1,7 @@
-(C) 2015-2015 Joshua Rogers <honey@internot.info>
+(C) 2015-2016 Joshua Rogers <honey@internot.info> <https://github.com/MegaManSec/RS-Account-Checker>
 Contact: @MegaManSec on Twitter.
 See COPYING for information regarding distribution.
+
 
 This program is a simple "account checker" for RuneScape, which takes proxies in the format of ipaddress:port, and accounts in the form on account:password.
 
@@ -54,6 +55,13 @@ TODO: Get max thread count dynamically and put a restriction on it?
 
 
 
+
+Sadly CURLOPT_PINNEDPUBLICKEY was only recently introduced to libcurl, so although the code is in this program, it's commented out.
+
+If you want to use it without the Bugabuse email, just remove(or comment out) everything in the main() function above "//Initialize options"(L1010-1048 at the time of writing this)
+
+
+
 Requirements:
 
 libcurl >= 7.44.0
@@ -61,3 +69,5 @@ GNUTLS
 OpenSSL
 pthreads
 gcrypt
+
+
