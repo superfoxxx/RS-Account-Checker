@@ -1,8 +1,8 @@
 Usage: 
-./a.out -t <numthreads> -a <accountfile> -p <proxyfile> [-o accounts] [-r 8] [-isvh]
+./checker.bin -t <numthreads> -a <accountfile> -p <proxyfile> [-o accounts] [-r 8] [-isvh]
 
 Example(And recommended usage): 
-./a.out -o outfile -a accounts.txt -p proxies.txt -r 8 -t 100
+./checker.bin -o outfile -a accounts.txt -p proxies.txt -r 8 -t 100
 
 
 Options:

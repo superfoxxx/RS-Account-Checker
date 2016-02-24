@@ -1,0 +1,42 @@
+HWID-Gen.c:
+	Unique program. Not the checker itself.
+	Handles the generation of a "HWID", as it's called. This created a program that would be given to somebody, and they ran it on their server, and output a string to give to an admin to put it into a database to allow them to run the checker. Since BA is now closed and "logging in" is no longer applicable, it isn't used.
+
+
+checker.php:
+	Unique program. Not the checker itself.
+	This would take the 'email', 'password', and 'hwid' parameters as POST.
+	Using vBulletin's SQL functions, it would confirm that somebody with the email $_POST['email'], had the password $_POST['password'], and that their HWID($_POST['hwid']) was valid for using the checker. No longer needed, and BA is closed and no hwid/login checks are done anymore.
+
+
+curl.c:
+	Handles the actual checking process. Submits the form to the login page, and returns what it gets using a storage function.
+
+
+hwid-check.c:
+	Check whether our secret file is present on the server, and if so, do everything needed to generate our HWID.
+
+
+log.c:
+	Handles all logging related actions.
+
+
+main.c:
+	Does everything else. Handles some functions such as bool return whether a string is alphanumeric, whether it's an "acceptable" RS username, and strdup copy(since strdup is non-standard).
+	Pushes accounts to list, and pushes proxies to list. Sets everything up with these, too.
+	Handles the threaded action. do_threaded() is done by threads, and doesnt rely on "outside" data.
+	Handles usage and arguments, and file related functions(checks if all files are valid, and have been opened.)
+	Mass open/close file function, and freeing of list contents function.
+	"Head" function, which sets up each list to the "initalized" state.
+	"end" function that destroys all lists, closes all files, and cleans everything up.
+	functions to determine if a proxy or account is currently in use(being checked, or being used)
+	Writing of 'unchecked accounts' file on exit of program.
+	Submitting of user/pass/hwid in appropriate fashion to checker.php(no longer used as BA is closed.)
+
+
+ssl.c:
+	SSL locks
+
+
+find-proxies.sh:
+	Very crude program to find proxies for testing the program.

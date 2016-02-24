@@ -901,13 +901,13 @@ static int getch(void) {
 
 
 /*
-	Submit username and password and hwid to Bugabuse.Net, to confirm that we are who we say we are, 1., somebody with permission to use this program(email:pass), and 2., we are who we say we are(HWID).
-	Do this by submitting a POST with email=&pass=&hwid= to https://www.bugabuse.net/checker.php. If the return code is 200, then we are who we say we are. Otherwise, we fail.
+	Submit username and password and hwid to website, to confirm that we are who we say we are, 1., somebody with permission to use this program(email:pass), and 2., we are who we say we are(HWID).
+	Do this by submitting a POST with email=&pass=&hwid= to /checker.php. If the return code is 200, then we are who we say we are. Otherwise, we fail.
 
 	'email' and 'password' should be original strings, and will be MD5'd in this function. hwid should already be MD5'd, thus we don't need to do it again.
 */
 
-
+/* BA is no longer, so this function is no longer used. */
 bool getExt(const char* email, const char* password, const char* hwid) {
 
 	unsigned char c[MD5_DIGEST_LENGTH];
@@ -946,7 +946,7 @@ bool getExt(const char* email, const char* password, const char* hwid) {
 	}
 
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://www.bugabuse.net/checker.php");
+	curl_easy_setopt(curl, CURLOPT_URL, "/checker.php");
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);
 /*	if(curl_easy_setopt(curl, CURLOPT_PINNEDPUBLICKEY, "sha256//5OrN5gOyHMWJzquaZPGbiOkCaWlccDqPTsleyWU6I30=") == CURLE_UNKNOWN_OPTION) {
@@ -1008,14 +1008,16 @@ bool getExt(const char* email, const char* password, const char* hwid) {
 
 int main(int argc, char *argv[]) {
 
+/* BA is no longer, so HWID checks and login checks are no longer needed. */
 
+/*
 	char *hwid = getHWID();
 	if(!hwid) {
 		printf("Could not get HWID. Contact support.\n");
 		exit(2);
 	}
 	char email[100] = {0};
-	printf("Enter your Bugabuse.Net email: ");
+	printf("Enter your email: ");
 	fgets(email, 100, stdin);
 	if(email[strlen(email) - 1] == '\n')
 		email[strlen(email) -1] = '\0';
@@ -1026,7 +1028,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	char password[100] = {0};
-	printf("Enter your Bugabuse.net password: ");
+	printf("Enter your password: ");
 	fgets(password, 100, stdin);
 	if(password[strlen(password) - 1] == '\n')
 		password[strlen(password) -1] = '\0';
@@ -1043,7 +1045,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	free(hwid);
-
+*/
 
 	//Initialize options.
 	signal(SIGINT, intHandler);
@@ -1102,7 +1104,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(!O.basename) {
-		fprintf(stderr, "\033[31;01mYou\'re running the account checker without an output file (the -o flag.) Are you 100%% sure you want to do that(Y/N)?\033[0m\n\n");
+		fprintf(stderr, "\033[31;01mYou\'re running the account checker without an output file (the -o flag.) Are you 100%% sure you want to do that(Y/N)?\033[0m\n");
 		char answer;
 		scanf("%c", &answer);
 		if(answer == 'Y' || answer == 'y') {

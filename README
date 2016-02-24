@@ -2,6 +2,8 @@
 Contact: @MegaManSec on Twitter.
 See COPYING for information regarding distribution.
 
+This is the final edition.
+
 
 This program is a simple "account checker" for RuneScape, which takes proxies in the format of ipaddress:port, and accounts in the form on account:password.
 
@@ -52,15 +54,15 @@ There are certains things that I will not fix, such as:
 
 TODO: Pot files for accounts?
 TODO: Get max thread count dynamically and put a restriction on it?
-
+TODO: When getting an error on checker.php, it will output the contents of the page. Don't do this. (Blame libcurl...)
 
 
 
 Sadly CURLOPT_PINNEDPUBLICKEY was only recently introduced to libcurl, so although the code is in this program, it's commented out.
 
-If you want to use it without the Bugabuse email, just remove(or comment out) everything in the main() function above "//Initialize options"(L1010-1048 at the time of writing this)
+Since BA is no more, all the HWID and BA email/password login is no longer needed. It is still in there, but commented, for archival purposes.
 
-
+checker.php and HWID-Gen.c are added for archival purposes(HWID-Gen.c was the program that customers had to run, and checker.php had to me on a server linked to a database, with customers' HWIDs, for verification.)
 
 Requirements:
 
@@ -71,3 +73,4 @@ pthreads
 gcrypt
 
 
+Confirmed to work on Ubuntu and FreeBSD.
