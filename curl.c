@@ -94,6 +94,7 @@ CURLcode check(char *response, size_t length, const char *username, const char* 
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "identity");
 	curl_easy_setopt(curl, CURLOPT_POST, 1);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
+	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);

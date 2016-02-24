@@ -153,15 +153,41 @@ static void push_acc(char *username, char *password) {
 	while(current->next)
 		current = current->next;
 	current->next = malloc(sizeof *current->next);
+	if(!current->next) {
+		printf("Allocate error\n");
+		if(total_accounts > 0)
+			total_accounts--;
+		pthread_mutex_unlock(&account);
+		return;
+	}
 
 	size_t plen = snprintf(NULL, 0, "%s", username);
 	plen +=1;
 	current->next->username = malloc(plen);
+	if(!current->next->username) {
+		printf("Allocate error 2\n");
+		if(total_accounts > 0)
+			total_accounts--;
+		free(current->next);
+		current->next = NULL;
+		pthread_mutex_unlock(&account);
+		return;
+	}
 	snprintf(current->next->username, plen, "%s", username);
 
 	plen = snprintf(NULL, 0, "%s", password);
 	plen +=1;
 	current->next->password = malloc(plen);
+	if(!current->next->password) {
+		printf("Allocate error 3\n");
+		if(total_accounts >0)
+			total_accounts--;
+		free(current->next->username);
+		free(current->next);
+		current->next = NULL;
+		pthread_mutex_unlock(&account);
+		return;
+	}
 	snprintf(current->next->password, plen, "%s", password);
 	fdo_log(DBGLOG, "Account (%s:%s) added to the list.", username, password);
 
@@ -377,7 +403,7 @@ static void *do_threaded() {
 		pthread_exit(NULL);
 	}
 
-
+	
 	if(resp != CURLE_OK) {
 		pthread_mutex_lock(&pthnum);
 		currentpx->retries++;
@@ -691,15 +717,33 @@ static void freeListContents(void) {
 	Initializes our head, locks, and curl.
 */
 static void StartHead(void) {
-	curl_global_init(CURL_GLOBAL_ALL);
+	if(curl_global_init(CURL_GLOBAL_ALL) != 0) {
+		do_log(GENLOG, "cURL init failure");
+		exit(0);
+	}
+	do_log(GENLOG, "BP 1");
 	init_locks();
 	//log_locks();
 
-	pthread_mutex_init(&account, NULL);
-	pthread_mutex_init(&pthnum, NULL);
-	pthread_mutex_init(&checks, NULL);
+	if(pthread_mutex_init(&account, NULL) != 0) {
+		do_log(GENLOG, "mutex fail 1");
+		exit(0);
+	}
+	if(pthread_mutex_init(&pthnum, NULL) != 0) {
+		do_log(GENLOG, "mutex fail 2");
+		exit(0);
+	}
+	if(pthread_mutex_init(&checks, NULL) != 0) {
+		do_log(GENLOG, "mutex fail 3");
+		exit(0);
+	}
+	do_log(GENLOG, "BP 2");
 
 	head = malloc(sizeof *head);
+	if(!head) {
+		do_log(GENLOG, "head malloc fail");
+		exit(0);
+	}
 	head->username = NULL;
 	head->password = NULL;
 	head->checked = true;
@@ -707,12 +751,17 @@ static void StartHead(void) {
 	head->next = NULL;
 
 	pxhead = malloc(sizeof *pxhead);
+	if(!pxhead) {
+		do_log(GENLOG, "pxhead fail");
+		exit(0);
+	}
 	pxhead->proxy = NULL;
 	pxhead->dead = true;
 	pxhead->type = 0;
 	pxhead->inprogress = false;
 	pxhead->retries = O.retries;
 	pxhead->next = NULL;
+	do_log(GENLOG, "BP 3");
 }
 
 /*
@@ -1121,7 +1170,7 @@ int main(int argc, char *argv[]) {
 	StartHead();
 
 
-
+	do_log(GENLOG, "Setting up accounts.");
 	if(0 >= setupaccounts()) {
 		free(O.basename);
 		fdo_log(GENLOG, "Could not load any accounts from the account file.\n"
@@ -1129,6 +1178,7 @@ int main(int argc, char *argv[]) {
 		freeListContents();
 		end(1);
 	}
+	do_log(GENLOG, "Setting out proxies.");
 	if(0 >= setupproxies()) {
 		free(O.basename);
 		fdo_log(GENLOG, "Could not load any proxies from the proxy file.\n"
