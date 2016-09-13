@@ -2,7 +2,7 @@ Usage:
 ./checker.bin -t <numthreads> -a <accountfile> -p <proxyfile> [-o accounts] [-r 8] [-isvh]
 
 Example(And recommended usage): 
-./checker.bin -o outfile -a accounts.txt -p proxies.txt -r 8 -t 100
+./checker.bin -o basename -a accounts.txt -p proxies.txt -r 8 -t 100
 
 
 Options:
